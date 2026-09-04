@@ -452,7 +452,7 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
         // 单行布局：图标、名称靠左；说明靠右对齐、紧贴箭头左侧；Row 垂直居中 + 箭头用
         // 真图标（ChevronRight）替代字形「›」，保证与文字严格对齐在同一中线上
         Text(icon, fontSize = 20.sp)
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(4.dp))
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (desc.isNotEmpty()) {
             Text(
@@ -464,7 +464,7 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
         } else {
             Spacer(Modifier.weight(1f))
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(2.dp))
         Icon(
             Icons.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(20.dp), tint = InkSoft
