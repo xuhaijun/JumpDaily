@@ -24,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.jumpdaily.jump.data.model.CountMode
 import com.jumpdaily.jump.di.AppContainer
 import com.jumpdaily.jump.ui.components.Edge
 import com.jumpdaily.jump.ui.components.FloatingJumpBar
@@ -102,6 +103,12 @@ fun AppRoot(container: AppContainer) {
             val tPaused by trainingVm.paused.collectAsStateWithLifecycle()
             val tCount by trainingVm.count.collectAsStateWithLifecycle()
             val tElapsed by trainingVm.elapsed.collectAsStateWithLifecycle()
+            // 当前会话的计数方式（挂起「继续」回到正确的训练页用）
+            val tSessionMode by trainingVm.sessionMode.collectAsStateWithLifecycle()
+            // 用户偏好的计数方式（无会话时「开始跳绳」按它分流，与首页大按钮一致）
+            val prefCountMode by container.prefsRepository.countMode.collectAsStateWithLifecycle(
+                initialValue = CountMode.CAMERA
+            )
             // 浮条位置记忆（全局，跨启动还原）
             val barEdge by container.prefsRepository.floatBarEdge().collectAsStateWithLifecycle(initialValue = "R")
             val barY by container.prefsRepository.floatBarY().collectAsStateWithLifecycle(initialValue = 0.62f)
@@ -153,9 +160,15 @@ fun AppRoot(container: AppContainer) {
                             coroutine.launch { container.prefsRepository.setFloatBarPos(if (edge == Edge.LEFT) "L" else "R", yRatio) }
                         },
                         onClick = {
-                            // 入口态/挂起态点击都进入摄像头训练页：
-                            // 无会话 → 自动开新会话；挂起 → 页内点「继续」接着跳
-                            nav.navigate(Screen.CameraTraining.route)
+                            // 按会话状态分流到正确训练页：
+                            // - 挂起「继续」→ 回到该会话自己的计数方式页（摄像头会话回摄像头页，传感器回传感器页）
+                            // - 无会话「开始跳绳」→ 按用户偏好计数方式分流（与首页大按钮一致）
+                            val target = if (tPaused && tSessionMode != null) {
+                                if (tSessionMode == CountMode.CAMERA) Screen.CameraTraining.route else Screen.Training.route
+                            } else {
+                                if (prefCountMode == CountMode.CAMERA) Screen.CameraTraining.route else Screen.Training.route
+                            }
+                            nav.navigate(target)
                         }
                     )
                 }

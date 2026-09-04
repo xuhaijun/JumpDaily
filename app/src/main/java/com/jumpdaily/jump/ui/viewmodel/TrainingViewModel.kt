@@ -120,6 +120,10 @@ class TrainingViewModel(
     private val _sensitivity = MutableStateFlow(1.0f)
     private val _paused = MutableStateFlow(false)
     val paused: StateFlow<Boolean> = _paused.asStateFlow()
+
+    /** 当前会话的计数方式（start 时记录）；null = 无会话。浮条「继续」据此回到正确的训练页。 */
+    private val _sessionMode = MutableStateFlow<CountMode?>(null)
+    val sessionMode: StateFlow<CountMode?> = _sessionMode.asStateFlow()
     private var childId: Long? = null
     private var lastJumpTs = 0L
     private var currentStreak = 0
@@ -153,6 +157,7 @@ class TrainingViewModel(
 
     fun start(childId: Long, mode: CountMode = CountMode.SENSOR) {
         this.childId = childId
+        _sessionMode.value = mode
         detector.setSensitivity(_sensitivity.value)
         _count.value = 0
         _elapsed.value = 0
@@ -275,6 +280,9 @@ class TrainingViewModel(
     }
 
     private fun onJump() {
+        // 暂停/未开始时不计数：摄像头模式下暂停期间页面分析器仍在跑，
+        // 不加守卫会出现「暂停了还在偷偷涨数」的 bug（传感器模式已由 detector.stop 兜底）
+        if (!_running.value) return
         val now = System.currentTimeMillis()
         val interval = now - lastJumpTs
         lastJumpTs = now
