@@ -303,7 +303,8 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("🪢", fontSize = 28.sp)
                         Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
+                        // 标题与数据行之间留 2.dp 间距，避免两行文字贴得太近
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 "上次成绩 · ${formatMonthDay(last.date)}",
                                 fontSize = 13.sp,

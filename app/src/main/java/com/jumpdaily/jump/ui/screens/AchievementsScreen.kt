@@ -86,7 +86,7 @@ fun AchievementsScreen(nav: NavHostController, records: RecordsViewModel, sessio
         Row(verticalAlignment = Alignment.CenterVertically) {
             ChildAvatar(child = child, size = 48.dp)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("${child?.name ?: "宝贝"} 的成就墙", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                 Text("已解锁 ${unlockedIds.size} / ${BadgeCatalog.ALL.size} 个成就", fontSize = 13.sp, color = InkSoft)
             }

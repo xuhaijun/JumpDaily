@@ -419,6 +419,8 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                                 label = "beat-a"
                             )
                         Card(
+                            // 整体上移 10.dp：节奏卡片在视觉上更贴近画面上沿，与下方跳跳星拉开层次
+                            modifier = Modifier.offset(y = (-10).dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.38f))
                         ) {

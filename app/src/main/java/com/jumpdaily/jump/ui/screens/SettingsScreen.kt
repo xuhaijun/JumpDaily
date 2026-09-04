@@ -233,7 +233,8 @@ fun SettingsScreen(container: AppContainer, nav: NavHostController? = null) {
                 Text("当前语音引擎：${container.voiceSpeaker.engineInfo()}", fontSize = 12.sp, color = InkSoft)
                 val espeakReady = container.voiceSpeaker.espeakAvailable()
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                    // 标题与副标题之间留 2.dp 间距，与上方开关行保持一致
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("🌐 离线优先（eSpeak 引擎）", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Text(
                             if (espeakReady) "已安装，开启后任意手机音色一致" else "未安装，点下方下载后可用",
@@ -342,7 +343,8 @@ private fun SettingsSwitchRow(
     onToggle: (Boolean) -> Unit
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+        // 标题与副标题之间留 2.dp 间距，避免两种字号挤在一起
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = InkSoft)
         }
