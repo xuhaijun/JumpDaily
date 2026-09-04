@@ -1,0 +1,10 @@
+<resources>
+    <!-- Compose 内容会立即覆盖窗口，这里只是一个轻量无 ActionBar 主题，避免启动白屏 -->
+    <style name="Theme.JumpDaily" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- 冷启动窗口底色：品牌紫，应用首帧渲染前不再白屏 -->
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+</resources>

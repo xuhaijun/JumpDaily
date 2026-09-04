@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 跳绳人物（白线稿）：放大的小人为主体，环绕的跳绳缩小并内收，四周留出内边距 -->
+    <group
+        android:name="skipper"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <!-- 跳绳：从右手经脚下绕回左手的小环（范围内收，不再贴边） -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:pathData="M38,42 Q30,76 54,78 Q78,76 70,42" />
+        <!-- 头 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,32 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+        <!-- 身体 -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:pathData="M54,42 L54,66" />
+        <!-- 手臂：举向两侧握住绳端 -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:pathData="M54,48 L38,42" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:pathData="M54,48 L70,42" />
+        <!-- 腿：腾空跳起的小跑姿势 -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:pathData="M54,66 L44,84" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:pathData="M54,66 L64,82" />
+    </group>
+</vector>

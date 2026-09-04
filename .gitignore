@@ -1,0 +1,22 @@
+# 构建产物
+/build
+**/build
+.gradle
+**/.gradle
+
+# 本地配置与密钥（切勿提交）
+local.properties
+*.keystore
+*.jks
+keystore.properties
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 根目录的临时验收截图与诊断文件
+/*.png
+/tts_init.txt
+
+# WorkBuddy 内部目录
+.workbuddy

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 启动窗口底色：品牌紫渐变，避免应用冷启动瞬间出现白屏 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="135"
+                android:startColor="#6A3FE8"
+                android:endColor="#8B5CF6" />
+        </shape>
+    </item>
+</layer-list>
