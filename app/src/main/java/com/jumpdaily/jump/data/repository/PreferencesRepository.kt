@@ -180,4 +180,22 @@ class PreferencesRepository(private val context: Context) {
     /** 取消兑换（误点或家长撤销时用，把奖品退回「可兑换」状态）。 */
     suspend fun unredeemPrize(childId: Long, prizeId: String) =
         context.dataStore.edit { it[redeemedKey(childId)] = (it[redeemedKey(childId)] ?: emptySet()) - prizeId }
+
+    // ===== 跳绳浮条位置记忆（全局，不按孩子隔离） =====
+
+    private val floatBarEdgeKey = stringPreferencesKey("float_bar_edge")
+    private val floatBarYKey = floatPreferencesKey("float_bar_y")
+
+    /** 浮条吸附边（"L"/"R"）。 */
+    fun floatBarEdge(): Flow<String> = context.dataStore.data.map { it[floatBarEdgeKey] ?: "R" }
+
+    /** 浮条垂直位置比例（0~1，相对可用高度）。 */
+    fun floatBarY(): Flow<Float> = context.dataStore.data.map { it[floatBarYKey] ?: 0.62f }
+
+    /** 记录浮条拖动后的吸附位置。 */
+    suspend fun setFloatBarPos(edge: String, yRatio: Float) =
+        context.dataStore.edit {
+            it[floatBarEdgeKey] = edge
+            it[floatBarYKey] = yRatio
+        }
 }

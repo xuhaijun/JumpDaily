@@ -16,20 +16,22 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Card
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -67,7 +69,11 @@ import com.jumpdaily.jump.util.formatDuration
 
 @Composable
 fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container: AppContainer) {
-    val vm: TrainingViewModel = viewModel(factory = container.trainingFactory)
+    // 训练 VM 提升为 Activity 级：与摄像头页共用同一实例，暂停挂起后跨页存活
+    val vm: TrainingViewModel = viewModel(
+        viewModelStoreOwner = LocalContext.current as ComponentActivity,
+        factory = container.trainingFactory
+    )
     val child by session.currentChild.collectAsStateWithLifecycle()
     val count by vm.count.collectAsStateWithLifecycle()
     val elapsed by vm.elapsed.collectAsStateWithLifecycle()
@@ -85,13 +91,18 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
     val danmaku by vm.danmaku.collectAsStateWithLifecycle()
     val streak by vm.streak.collectAsStateWithLifecycle()
 
-    // 返回拦截：只要跳过（count > 0）且还没「结束」，就先问是否保存，避免误触丢成绩
-    var showBackConfirm by remember { mutableStateOf(false) }
-    BackHandler(enabled = count > 0 && result == null) { showBackConfirm = true }
+    // 返回拦截已移除（2026-09-05）：跳绳中返回 = 自动暂停挂起，见下方 DisposableEffect
 
+    // 会话跨页存活：暂停挂起后（running=false 但 paused=true）重入不能重置会话
     LaunchedEffect(child?.id) {
         val id = child?.id ?: return@LaunchedEffect
-        if (!vm.running.value) vm.start(id, CountMode.SENSOR)
+        if (!vm.running.value && !vm.paused.value) vm.start(id, CountMode.SENSOR)
+    }
+
+    // 离开本页 = 自动暂停挂起（与摄像头页一致）：会话保存在 Activity 级 VM，
+    // 回首页后浮条可一键继续；正式落库只发生在点「结束并保存」。
+    DisposableEffect(Unit) {
+        onDispose { vm.pause() }
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -180,32 +191,8 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
         DanmakuOverlay(events = danmaku, onConsumed = vm::consumeDanmaku, modifier = Modifier.fillMaxSize())
         ConfettiBurst(active = confetti, onDone = vm::consumeConfetti)
 
-        // 返回保存确认框：避免误触返回把辛苦跳的成绩弄丢
-        if (showBackConfirm) {
-            androidx.compose.ui.window.Dialog(onDismissRequest = { showBackConfirm = false }) {
-                Card(Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(24.dp)) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("结束并保存？", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            "已经跳了 $count 个啦！要不要结束这次训练，把成绩保存下来呢？\n（不保存的话，这一次的成果可就白跳咯～）",
-                            fontSize = 14.sp, color = InkSoft
-                        )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            CuteButton(
-                                "继续跳", onClick = { showBackConfirm = false },
-                                modifier = Modifier.weight(1f),
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            CuteButton(
-                                "结束并保存", onClick = { showBackConfirm = false; vm.stop() },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // 2026-09-05：返回确认框已移除——跳绳中返回 = 自动暂停挂起（DisposableEffect 里统一处理），
+        // 回首页后浮条可一键「继续跳绳」；正式结束走页内「结束并保存」按钮。
 
         if (result != null) {
             ResultDialog(

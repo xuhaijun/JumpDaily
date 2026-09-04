@@ -10,7 +10,6 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -89,7 +88,12 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, container: AppContainer) {
-    val vm: TrainingViewModel = viewModel(factory = container.trainingFactory)
+    // 训练 VM 提升为 Activity 级：暂停挂起后离开本页再回来（或从首页浮条进入），会话仍在，
+    // 浮条「继续跳绳」依赖这个跨页存活的实例（默认 viewModel() 会绑定本页 backstack，离开即销毁）
+    val vm: TrainingViewModel = viewModel(
+        viewModelStoreOwner = LocalContext.current as ComponentActivity,
+        factory = container.trainingFactory
+    )
     val child by session.currentChild.collectAsStateWithLifecycle()
     val count by vm.count.collectAsStateWithLifecycle()
     val elapsed by vm.elapsed.collectAsStateWithLifecycle()
@@ -129,8 +133,6 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     // 我们的自定义说明弹框 / 永久拒绝引导弹框
     var showCamRationale by remember { mutableStateOf(false) }
     var showCamDenied by remember { mutableStateOf(false) }
-    // 返回拦截确认框：跳的个数超过阈值、且尚未「结束」时，系统返回先弹确认，避免误丢成绩
-    var showBackConfirm by remember { mutableStateOf(false) }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         askedCameraBefore = true
@@ -216,7 +218,9 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     }
 
     LaunchedEffect(child?.id) {
-        if (!vm.running.value) vm.start(child?.id ?: 0L, CountMode.CAMERA)
+        // 只有「没有进行中的会话」才开新会话：暂停挂起后（running=false 但 paused=true）重入
+        // 不能重置，否则从首页浮条点「继续」进来会把辛苦跳的计数清零
+        if (!vm.running.value && !vm.paused.value) vm.start(child?.id ?: 0L, CountMode.CAMERA)
     }
 
     // 后台获取模型路径（可能联网下载），结果写入 modelPath / modelMsg
@@ -260,14 +264,12 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     DisposableEffect(Unit) {
         onDispose {
             detector?.stop()
-            if (vm.running.value) vm.stop()
+            // 2026-09-05：离开本页从「结束保存」改为「自动暂停挂起」——
+            // 会话保存在 Activity 级 VM 里，回首页后浮条可一键「继续跳绳」；
+            // 正式落库只发生在训练页内点「结束并保存」（vm.stop()）。
+            // pause() 内部有 running 判断：已结束/已暂停时是无害空操作。
+            vm.pause()
         }
-    }
-
-    // 系统返回拦截：只要已经跳过（count > 0）且还没正式「结束」，就先弹框问是否保存本次记录，
-    // 避免误触返回把辛苦跳的成绩弄丢；确认则复用 vm.stop() 的保存流程，取消则继续跳。
-    BackHandler(enabled = count > 0 && result == null) {
-        showBackConfirm = true
     }
 
     // 深空紫渐变背景：相机预览全屏覆盖时不影响；无预览（授权/加载/降级）时深紫衬白字更协调好看
@@ -541,38 +543,8 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             )
         }
 
-        // 返回拦截确认框：跳了很多个还想走时，先确认是否结束并保存，避免成绩丢失
-        if (showBackConfirm) {
-            Dialog(onDismissRequest = { showBackConfirm = false }) {
-                Card(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("结束并保存？", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            "已经跳了 $count 个啦！要不要结束这次训练，把成绩保存下来呢？\n（不保存的话，这一次的成果可就白跳咯～）",
-                            fontSize = 14.sp, color = InkSoft
-                        )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            CuteButton(
-                                "继续跳",
-                                onClick = { showBackConfirm = false },
-                                modifier = Modifier.weight(1f),
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            CuteButton(
-                                "结束并保存",
-                                onClick = { showBackConfirm = false; vm.stop() },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // 2026-09-05：返回确认框已移除——跳绳中返回 = 自动暂停挂起（回首页浮条可继续），
+        // 不再弹「结束并保存？」；正式结束走页内「结束」按钮。
     }
 }
 
