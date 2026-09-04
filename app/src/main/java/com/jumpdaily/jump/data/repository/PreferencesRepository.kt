@@ -142,13 +142,22 @@ class PreferencesRepository(private val context: Context) {
 
     private fun pointsKey(childId: Long) = intPreferencesKey("points_$childId")
     private fun prizesKey(childId: Long) = stringSetPreferencesKey("earned_prizes_$childId")
+    private fun redeemedKey(childId: Long) = stringSetPreferencesKey("redeemed_prizes_$childId")
 
     /** 某个孩子当前累计积分。 */
     fun points(childId: Long): Flow<Int> = context.dataStore.data.map { it[pointsKey(childId)] ?: 0 }
 
-    /** 某个孩子已获得的奖品 id 集合。 */
+    /**
+     * 已「庆祝过」的奖品 id 集合（积分达标时由 TrainingViewModel 自动写入）。
+     * ⚠️ 语义注意：这个集合只用于「解锁庆祝动画只弹一次」的去重，
+     * 不代表孩子真正兑换了奖品——「已兑换」请用 [redeemedPrizes]。
+     */
     fun earnedPrizes(childId: Long): Flow<Set<String>> =
         context.dataStore.data.map { it[prizesKey(childId)] ?: emptySet() }
+
+    /** 某个孩子已真正兑换（找爸妈兑现过）的奖品 id 集合，仅由兑换操作手动写入。 */
+    fun redeemedPrizes(childId: Long): Flow<Set<String>> =
+        context.dataStore.data.map { it[redeemedKey(childId)] ?: emptySet() }
 
     /** 增减积分；返回变动后的总积分（下限 0，不会变负）。 */
     suspend fun addPoints(childId: Long, delta: Int): Int {
@@ -160,7 +169,15 @@ class PreferencesRepository(private val context: Context) {
         return next
     }
 
-    /** 记录一个已获得的奖品（重复调用无副作用）。 */
+    /** 标记一个奖品已庆祝过（防止每次进训练都重复弹解锁动画；重复调用无副作用）。 */
     suspend fun addPrize(childId: Long, prizeId: String) =
         context.dataStore.edit { it[prizesKey(childId)] = (it[prizesKey(childId)] ?: emptySet()) + prizeId }
+
+    /** 记录一次真实兑换（孩子在奖品墙点「兑换」并确认后调用）。 */
+    suspend fun redeemPrize(childId: Long, prizeId: String) =
+        context.dataStore.edit { it[redeemedKey(childId)] = (it[redeemedKey(childId)] ?: emptySet()) + prizeId }
+
+    /** 取消兑换（误点或家长撤销时用，把奖品退回「可兑换」状态）。 */
+    suspend fun unredeemPrize(childId: Long, prizeId: String) =
+        context.dataStore.edit { it[redeemedKey(childId)] = (it[redeemedKey(childId)] ?: emptySet()) - prizeId }
 }

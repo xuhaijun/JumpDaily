@@ -362,7 +362,11 @@ class TrainingViewModel(
         checkPrizeUnlock(total)
     }
 
-    /** 积分跨过奖品门槛时解锁：弹幕 + 语音 + 持久化，每个奖品只弹一次。 */
+    /**
+     * 积分跨过奖品门槛时的「解锁」庆祝：弹幕 + 语音 + 音效，每个奖品只弹一次。
+     * ⚠️ 这里写入的 earned_prizes 集合只用于庆祝去重，≠ 孩子真正兑换；
+     * 真实兑换在「我的」页奖品墙手动确认，存到 redeemed_prizes（见 PreferencesRepository）。
+     */
     private fun checkPrizeUnlock(total: Int) {
         val cid = childId ?: return
         Rewards.PRIZES.forEach { prize ->

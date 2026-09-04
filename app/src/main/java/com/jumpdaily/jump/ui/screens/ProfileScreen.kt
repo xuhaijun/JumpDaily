@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import com.jumpdaily.jump.ui.theme.PurplePrimary
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 /**
  * 「我的」页：孩子主页 + 积分奖品 + 常用入口。
@@ -83,10 +85,12 @@ fun ProfileScreen(
         childId?.let { container.prefsRepository.points(it) } ?: flowOf(0)
     }
     val points by pointsFlow.collectAsStateWithLifecycle(initialValue = 0)
-    val earnedFlow = remember(childId) {
-        childId?.let { container.prefsRepository.earnedPrizes(it) } ?: flowOf(emptySet())
+    // 「已兑换」只读 redeemed 集合（真实兑换过才有）；
+    // earned_prizes 是自动庆祝去重集合，与兑换无关，不能拿来当兑换状态展示
+    val redeemedFlow = remember(childId) {
+        childId?.let { container.prefsRepository.redeemedPrizes(it) } ?: flowOf(emptySet())
     }
-    val earned by earnedFlow.collectAsStateWithLifecycle(initialValue = emptySet())
+    val redeemed by redeemedFlow.collectAsStateWithLifecycle(initialValue = emptySet())
 
     val level = Rewards.levelOf(points)
     val next = Rewards.nextLevel(points)
@@ -102,6 +106,12 @@ fun ProfileScreen(
     }
 
     var showVersion by remember { mutableStateOf(false) }
+
+    // 兑换交互：当前点中的奖品（null=无）；claimed=true 表示该奖品已兑换（弹取消框）
+    var prizeDialog by remember { mutableStateOf<Rewards.Prize?>(null) }
+    var prizeDialogClaimed by remember { mutableStateOf(false) }
+    // 兑换/取消兑换的落盘作用域（点击回调里调 suspend 函数用）
+    val scope = rememberCoroutineScope()
 
     Column(
         Modifier
@@ -214,10 +224,17 @@ fun ProfileScreen(
                     ) {
                         row.forEach { prize ->
                             val unlocked = points >= prize.needPoints
+                            val claimed = prize.id in redeemed
                             PrizeChip(
                                 prize = prize,
                                 unlocked = unlocked,
-                                claimed = prize.id in earned,
+                                claimed = claimed,
+                                // 可兑换/已兑换的奖品都可点：前者弹兑换确认，后者弹取消兑换
+                                enabled = unlocked,
+                                onClick = {
+                                    prizeDialog = prize
+                                    prizeDialogClaimed = claimed
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -225,11 +242,17 @@ fun ProfileScreen(
                         repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
+                // 引导文案：说清「解锁≠兑换」，孩子知道下一步该干嘛
                 Text(
                     if (nextPrize != null)
                         "下一个奖品：${nextPrize.emoji} ${nextPrize.name}（还差 ${nextPrize.needPoints - points} 分）"
                     else "所有奖品都解锁啦，你就是跳绳小霸王！👑",
                     fontSize = 13.sp,
+                    color = InkSoft
+                )
+                Text(
+                    "点亮的奖品可以让爸爸妈妈兑现哦，兑过的会盖上「已兑换」小印章 🎉",
+                    fontSize = 11.sp,
                     color = InkSoft
                 )
             }
@@ -238,22 +261,22 @@ fun ProfileScreen(
         // ===== 我的数据（入口）=====
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
             Column(Modifier.padding(vertical = 6.dp)) {
-                ProfileLinkRow("📊 运动报告", "看趋势和打卡") { nav.navigate(Screen.Stats.route) }
-                ProfileLinkRow("🏆 成就墙", "已解锁 ${badges.size} 个") { nav.navigate(Screen.Achievements.route) }
-                ProfileLinkRow("👦 孩子管理", child?.name ?: "添加或切换宝贝") { nav.navigate(Screen.Children.route) }
-                ProfileLinkRow("⚙️ 设置", "目标 / 提醒 / 声音语音") { nav.navigate(Screen.Settings.route) }
+                ProfileLinkRow("📊", "运动报告", "看趋势和打卡") { nav.navigate(Screen.Stats.route) }
+                ProfileLinkRow("🏆", "成就墙", "已解锁 ${badges.size} 个") { nav.navigate(Screen.Achievements.route) }
+                ProfileLinkRow("👦", "孩子管理", child?.name ?: "添加或切换宝贝") { nav.navigate(Screen.Children.route) }
+                ProfileLinkRow("⚙️", "设置", "目标 / 提醒 / 声音语音") { nav.navigate(Screen.Settings.route) }
             }
         }
 
         // ===== 其他 =====
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
             Column(Modifier.padding(vertical = 6.dp)) {
-                ProfileLinkRow("📄 隐私政策", "") { nav.navigate(Screen.Privacy.route) }
-                ProfileLinkRow("🧹 清理缓存", formatBytes(cacheBytes)) {
+                ProfileLinkRow("📄", "隐私政策", "") { nav.navigate(Screen.Privacy.route) }
+                ProfileLinkRow("🧹", "清理缓存", formatBytes(cacheBytes)) {
                     clearCache(ctx)
                     cacheBytes = 0L
                 }
-                ProfileLinkRow("ℹ️ 版本信息", "v$version") { showVersion = true }
+                ProfileLinkRow("ℹ️", "版本信息", "v$version") { showVersion = true }
             }
         }
 
@@ -287,6 +310,61 @@ fun ProfileScreen(
             }
         )
     }
+
+    // 兑换确认框：把「积分解锁」变成一次有仪式感的真实兑换动作
+    prizeDialog?.let { prize ->
+        val cid = childId
+        if (prizeDialogClaimed) {
+            // 已兑换 → 询问是否撤销（误点/家长撤销用）
+            AlertDialog(
+                onDismissRequest = { prizeDialog = null },
+                title = { Text("取消兑换？") },
+                text = {
+                    Text(
+                        "${prize.emoji} ${prize.name} 还没真正拿到的话，可以退回「可兑换」，下次再换哦。"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        prizeDialog = null
+                        if (cid != null) {
+                            scope.launch { container.prefsRepository.unredeemPrize(cid, prize.id) }
+                        }
+                    }) { Text("取消兑换") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { prizeDialog = null }) { Text("先这样") }
+                }
+            )
+        } else {
+            // 未兑换 → 引导找爸妈兑现，确认后盖「已兑换」章
+            AlertDialog(
+                onDismissRequest = { prizeDialog = null },
+                title = { Text("兑换 ${prize.emoji} ${prize.name}？") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("找爸爸妈妈兑现：${prize.desc}")
+                        Text(
+                            "确认拿到手后点「兑换」，奖品就会盖上「已兑换」的小印章。",
+                            fontSize = 12.sp,
+                            color = InkSoft
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        prizeDialog = null
+                        if (cid != null) {
+                            scope.launch { container.prefsRepository.redeemPrize(cid, prize.id) }
+                        }
+                    }) { Text("兑换") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { prizeDialog = null }) { Text("再想想") }
+                }
+            )
+        }
+    }
 }
 
 // ============================ 子组件 ============================
@@ -300,12 +378,14 @@ private fun HeroStat(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
-/** 奖品小格子：已解锁彩色实心，未解锁灰化加锁。 */
+/** 奖品小格子：三态——未解锁(🔒灰化) / 已解锁可兑换(彩色+徽章，可点) / 已兑换(彩色+印章，可点撤销)。 */
 @Composable
 private fun PrizeChip(
     prize: Rewards.Prize,
     unlocked: Boolean,
     claimed: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -315,6 +395,8 @@ private fun PrizeChip(
                 if (unlocked) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant
             )
+            // 只给已解锁的奖品加点击反馈；未解锁的点了没反应（锁着就是锁着）
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 10.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -329,31 +411,51 @@ private fun PrizeChip(
             maxLines = 1
         )
         Text(
-            if (unlocked) "${prize.needPoints}分" else "${prize.needPoints}分",
+            "${prize.needPoints}分",
             fontSize = 9.sp,
             color = if (unlocked) MaterialTheme.colorScheme.onPrimaryContainer else InkSoft
         )
-        if (unlocked && claimed) {
-            Text("已兑换", fontSize = 8.sp, color = MaterialTheme.colorScheme.primary)
+        // 状态徽章：未解锁不显示；已解锁未兑换提示「可兑换」；兑换过盖「已兑换」小印章
+        when {
+            claimed -> Text(
+                "已兑换",
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            unlocked -> Text(
+                "可兑换",
+                fontSize = 8.sp,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
 
-/** 跳转行：左标题 + 右副标题 + 箭头。 */
+/**
+ * 跳转行：图标 | 标题+说明（上下堆叠） | 向右箭头，整体垂直居中。
+ * 图标独立一列，说明放在标题下方小字，不再与标题挤在一行。
+ */
 @Composable
-private fun ProfileLinkRow(label: String, value: String, onClick: () -> Unit) {
+private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        if (value.isNotEmpty()) {
-            Text(value, fontSize = 13.sp, color = InkSoft)
-            Spacer(Modifier.width(6.dp))
+        // 图标列：稍大一号的 emoji，与文字块中线对齐
+        Text(icon, fontSize = 20.sp)
+        Spacer(Modifier.width(12.dp))
+        // 文字块：标题在上、说明在下（有说明才占位，保持 2.dp 呼吸间距）
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            if (desc.isNotEmpty()) {
+                Spacer(Modifier.height(2.dp))
+                Text(desc, fontSize = 12.sp, color = InkSoft)
+            }
         }
         Text("›", fontSize = 18.sp, color = InkSoft)
     }
