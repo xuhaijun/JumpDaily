@@ -1,16 +1,6 @@
 package com.jumpdaily.jump.ui.screens
 
-import android.Manifest
-import android.app.TimePickerDialog
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,15 +18,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,53 +41,28 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.jumpdaily.jump.data.model.CountMode
 import com.jumpdaily.jump.data.model.Rewards
-import com.jumpdaily.jump.data.repository.DEFAULT_DAILY_GOAL
-import com.jumpdaily.jump.data.repository.DEFAULT_WEEKLY_GOAL
 import com.jumpdaily.jump.di.AppContainer
 import com.jumpdaily.jump.ui.components.ChildAvatar
-import com.jumpdaily.jump.ui.components.PermissionDeniedDialog
-import com.jumpdaily.jump.ui.components.PermissionRationaleDialog
 import com.jumpdaily.jump.ui.navigation.Screen
-import com.jumpdaily.jump.ui.theme.DarkSurfaceVariant
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.theme.PinkSecondary
 import com.jumpdaily.jump.ui.theme.PurplePrimary
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
-import com.jumpdaily.jump.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * 开关配色（与设置页保持一致：开=品牌紫填充，关=紫色描边 + 浅底）。
- * 注意：SwitchDefaults.colors 是 @Composable，必须写成函数而不能是顶层 val。
- */
-@Composable
-private fun profileSwitchColors(dark: Boolean = false) = SwitchDefaults.colors(
-    checkedThumbColor = Color.White,
-    checkedTrackColor = PurplePrimary,
-    checkedBorderColor = PurplePrimary,
-    uncheckedThumbColor = Color.White,
-    uncheckedTrackColor = if (dark) DarkSurfaceVariant else Color(0xFFE4DBFB),
-    uncheckedBorderColor = PurplePrimary
-)
-
-/**
- * 「我的」页：孩子主页 + 积分奖品 + 全部设置。
+ * 「我的」页：孩子主页 + 积分奖品 + 常用入口。
  *
  * 设计取向（儿童产品，家长也会看）：
- * - **没有顶部标题栏**：不再放「我的」标题和右上角设置齿轮，一进来直接是孩子的彩色主页，
- *   所有设置都平铺在下方卡片里，少一层跳转、少一点「工具感」；
+ * - **没有顶部标题栏**：不再放「我的」标题和右上角设置齿轮，一进来直接是孩子的彩色主页；
  * - 孩子最关心的【积分 / 等级 / 奖品墙】放在最上面，跳完就想来看看赚了多少；
- * - 原来藏在设置页里的【计数方式 / 灵敏度 / 目标 / 提醒 / 音效 / 语音 / 夜间模式】
- *   全部整合到这里，一次滑到底就能调完；
- * - 补齐此前只占位未实现的功能：成就墙与运动报告入口、孩子管理、版本信息弹框、恢复默认设置。
+ * - 具体设置项（计数方式 / 灵敏度 / 目标 / 提醒 / 音效 / 语音 / 夜间模式 / 恢复默认）
+ *   已迁移到独立「设置」页，通过下方「我的数据」卡的「⚙️ 设置」进入；
+ * - 补齐此前只占位未实现的功能：成就墙与运动报告入口、孩子管理、版本信息弹框。
  */
 @Composable
 fun ProfileScreen(
@@ -111,25 +71,11 @@ fun ProfileScreen(
     container: AppContainer,
     records: RecordsViewModel
 ) {
-    val vm: SettingsViewModel = viewModel(factory = container.settingsFactory)
     val child by session.currentChild.collectAsStateWithLifecycle()
     val stats by records.stats.collectAsStateWithLifecycle()
     val badges by records.badges.collectAsStateWithLifecycle()
 
-    val reminderOn by vm.reminderEnabled.collectAsStateWithLifecycle()
-    val hour by vm.reminderHour.collectAsStateWithLifecycle()
-    val minute by vm.reminderMinute.collectAsStateWithLifecycle()
-    val soundOn by vm.soundEnabled.collectAsStateWithLifecycle()
-    val voiceOn by vm.voiceEnabled.collectAsStateWithLifecycle()
-    val voiceOffline by vm.voiceOffline.collectAsStateWithLifecycle()
-    val sensitivity by vm.sensitivity.collectAsStateWithLifecycle()
-    val dailyGoal by vm.dailyGoal.collectAsStateWithLifecycle()
-    val weeklyGoal by vm.weeklyGoal.collectAsStateWithLifecycle()
-    val darkOn by vm.darkTheme.collectAsStateWithLifecycle()
-    val countMode by vm.countMode.collectAsStateWithLifecycle()
-
     val ctx = LocalContext.current
-    val activity = ctx as? ComponentActivity
 
     // 该孩子的总积分与已兑换奖品（按 childId 隔离存储）
     val childId = child?.id
@@ -156,30 +102,6 @@ fun ProfileScreen(
     }
 
     var showVersion by remember { mutableStateOf(false) }
-    var showReset by remember { mutableStateOf(false) }
-
-    // 通知权限（Android 13+ 开启提醒时需要）
-    var showNotiRationale by remember { mutableStateOf(false) }
-    var showNotiDenied by remember { mutableStateOf(false) }
-    val notiLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) vm.setReminder(true, hour, minute)
-        else {
-            vm.setReminder(false, hour, minute) // 未授权则回退开关，避免「开着却不提醒」
-            if (activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)) {
-                showNotiDenied = true
-            }
-        }
-    }
-
-    /** 拨动「每日提醒」：开启且未授权时，先弹说明框再向系统申请。 */
-    fun onReminderToggle(on: Boolean) {
-        if (!on) { vm.setReminder(false, hour, minute); return }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) { vm.setReminder(true, hour, minute); return }
-        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            vm.setReminder(true, hour, minute); return
-        }
-        showNotiRationale = true
-    }
 
     Column(
         Modifier
@@ -313,108 +235,13 @@ fun ProfileScreen(
             }
         }
 
-        // ===== 训练设置（原设置页内容前移）=====
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("🏃 训练设置", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text("计数方式", fontSize = 14.sp, color = InkSoft)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChoiceChip("📱 传感器", countMode == CountMode.SENSOR, Modifier.weight(1f)) {
-                        vm.setCountMode(CountMode.SENSOR)
-                    }
-                    ChoiceChip("🎥 摄像头", countMode == CountMode.CAMERA, Modifier.weight(1f)) {
-                        vm.setCountMode(CountMode.CAMERA)
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                ProfileSliderRow("🎯 计数灵敏度", "%.2f".format(sensitivity), sensitivity, 0.5f..1.5f, 10) {
-                    vm.setSensitivity(it)
-                }
-                Text(
-                    "孩子跳得轻就调高，跳得重就调低。",
-                    fontSize = 12.sp, color = InkSoft
-                )
-                Spacer(Modifier.height(2.dp))
-                ProfileSliderRow(
-                    "🏁 每日目标", "$dailyGoal 个", dailyGoal.toFloat(), 50f..1000f, 95
-                ) { vm.setDailyGoal(it.toInt()) }
-                ProfileSliderRow(
-                    "📅 每周目标", "$weeklyGoal 个",
-                    weeklyGoal.toFloat().coerceIn(350f, 7000f), 350f..7000f, 133
-                ) { vm.setWeeklyGoal(it.toInt()) }
-                Text("调每日目标时每周目标会按「每日 × 7」自动同步。", fontSize = 12.sp, color = InkSoft)
-            }
-        }
-
-        // ===== 提醒 =====
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔔 每日提醒", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Switch(checked = reminderOn, onCheckedChange = { onReminderToggle(it) }, colors = profileSwitchColors(darkOn))
-                }
-                if (reminderOn) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { showTimePicker(ctx, hour, minute) { h, m -> vm.setReminder(true, h, m) } }
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Text("提醒时间", fontSize = 15.sp, color = InkSoft, modifier = Modifier.weight(1f))
-                        Text(
-                            String.format("%02d:%02d", hour, minute),
-                            fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                Text("到点提醒宝贝来跳绳，养成运动好习惯～", fontSize = 12.sp, color = InkSoft)
-            }
-        }
-
-        // ===== 声音与语音 =====
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("🔊 声音与语音", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                ProfileSwitchRow("🔔 反馈音效", "跳跃、奖励、成就的童音音效", soundOn) { vm.setSound(it) }
-                ProfileSwitchRow("🗣️ 语音提示", "训练中用童音朗读鼓励语", voiceOn) { vm.setVoice(it) }
-                ProfileSwitchRow("🌙 夜间模式", "晚上跳也不刺眼", darkOn) { vm.setDarkTheme(it) }
-                Spacer(Modifier.height(4.dp))
-                // 换手机 / 缺中文语音包时，点这里跳系统下载
-                ProfileActionRow("📥 下载中文语音包") { container.voiceSpeaker.requestVoiceDataInstall(ctx) }
-                Text("当前语音引擎：${container.voiceSpeaker.engineInfo()}", fontSize = 12.sp, color = InkSoft)
-                val espeakReady = container.voiceSpeaker.espeakAvailable()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("🌐 离线优先（eSpeak 引擎）", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (espeakReady) "已安装，开启后任意手机音色一致" else "未安装，点下方下载后可用",
-                            fontSize = 12.sp, color = InkSoft
-                        )
-                    }
-                    Switch(
-                        checked = voiceOffline,
-                        enabled = espeakReady,
-                        onCheckedChange = { vm.setVoiceOffline(it) },
-                        colors = profileSwitchColors(darkOn)
-                    )
-                }
-                if (!espeakReady) {
-                    ProfileActionRow("📥 下载 eSpeak 离线中文引擎", highlight = true) {
-                        container.voiceSpeaker.requestEspeakInstall(ctx)
-                    }
-                }
-            }
-        }
-
         // ===== 我的数据（入口）=====
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
             Column(Modifier.padding(vertical = 6.dp)) {
                 ProfileLinkRow("📊 运动报告", "看趋势和打卡") { nav.navigate(Screen.Stats.route) }
                 ProfileLinkRow("🏆 成就墙", "已解锁 ${badges.size} 个") { nav.navigate(Screen.Achievements.route) }
                 ProfileLinkRow("👦 孩子管理", child?.name ?: "添加或切换宝贝") { nav.navigate(Screen.Children.route) }
+                ProfileLinkRow("⚙️ 设置", "目标 / 提醒 / 声音语音") { nav.navigate(Screen.Settings.route) }
             }
         }
 
@@ -427,7 +254,6 @@ fun ProfileScreen(
                     cacheBytes = 0L
                 }
                 ProfileLinkRow("ℹ️ 版本信息", "v$version") { showVersion = true }
-                ProfileLinkRow("♻️ 恢复默认设置", "") { showReset = true }
             }
         }
 
@@ -459,58 +285,6 @@ fun ProfileScreen(
             confirmButton = {
                 TextButton(onClick = { showVersion = false }) { Text("知道啦") }
             }
-        )
-    }
-
-    if (showReset) {
-        AlertDialog(
-            onDismissRequest = { showReset = false },
-            title = { Text("恢复默认设置？") },
-            text = { Text("会把计数方式、灵敏度、目标、提醒、音效与语音开关恢复成默认值。\n跳绳记录和积分不会丢失。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showReset = false
-                    vm.setCountMode(CountMode.CAMERA)
-                    vm.setSensitivity(1.0f)
-                    vm.setDailyGoal(DEFAULT_DAILY_GOAL)
-                    vm.setWeeklyGoal(DEFAULT_WEEKLY_GOAL)
-                    vm.setReminder(false, 19, 0)
-                    vm.setSound(true)
-                    vm.setVoice(true)
-                    vm.setDarkTheme(false)
-                }) { Text("恢复默认") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showReset = false }) { Text("再想想") }
-            }
-        )
-    }
-
-    if (showNotiRationale) {
-        PermissionRationaleDialog(
-            title = "需要通知权限",
-            body = "爱跳绳会在你设定的时间发送「该运动啦」的提醒，帮宝贝养成跳绳好习惯。\n\n" +
-                    "通知只在本机触发，你可以随时在系统设置里关闭。",
-            onConfirm = {
-                showNotiRationale = false
-                notiLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            },
-            onDismiss = { showNotiRationale = false; vm.setReminder(false, hour, minute) }
-        )
-    }
-
-    if (showNotiDenied) {
-        PermissionDeniedDialog(
-            title = "通知权限被关闭",
-            body = "你之前选择了「不再询问」，系统不再弹出授权框。\n\n" +
-                    "请到「设置 → 应用 → 爱跳绳 → 通知」中手动开启，才能收到跳绳提醒。",
-            onOpenSettings = {
-                showNotiDenied = false
-                ctx.startActivity(
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null))
-                )
-            },
-            onDismiss = { showNotiDenied = false }
         )
     }
 }
@@ -565,55 +339,6 @@ private fun PrizeChip(
     }
 }
 
-/** 带副标题的开关行。 */
-@Composable
-private fun ProfileSwitchRow(
-    label: String,
-    sub: String,
-    checked: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = InkSoft)
-        }
-        Switch(checked = checked, onCheckedChange = onToggle, colors = profileSwitchColors())
-    }
-}
-
-/** 可点击的操作行（高亮底色用于「下载」这类主行动）。 */
-@Composable
-private fun ProfileActionRow(label: String, highlight: Boolean = false, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (highlight) MaterialTheme.colorScheme.secondaryContainer
-                else MaterialTheme.colorScheme.primaryContainer
-            )
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (highlight) MaterialTheme.colorScheme.onSecondaryContainer
-            else MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            "›",
-            fontSize = 18.sp,
-            color = if (highlight) MaterialTheme.colorScheme.onSecondaryContainer
-            else MaterialTheme.colorScheme.onPrimaryContainer
-        )
-    }
-}
-
 /** 跳转行：左标题 + 右副标题 + 箭头。 */
 @Composable
 private fun ProfileLinkRow(label: String, value: String, onClick: () -> Unit) {
@@ -634,43 +359,7 @@ private fun ProfileLinkRow(label: String, value: String, onClick: () -> Unit) {
     }
 }
 
-/** 带滑块的设置行。 */
-@Composable
-private fun ProfileSliderRow(
-    label: String,
-    valueText: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    onChange: (Float) -> Unit
-) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Text(valueText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        }
-        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
-    }
-}
-
-/** 二选一胶囊按钮。 */
-@Composable
-private fun ChoiceChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    ) { Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-}
-
 // ============================ 工具函数 ============================
-
-private fun showTimePicker(ctx: Context, hour: Int, minute: Int, onSet: (Int, Int) -> Unit) {
-    TimePickerDialog(ctx, { _, h, m -> onSet(h, m) }, hour, minute, true).show()
-}
 
 /** 递归统计应用缓存目录大小（字节）。 */
 private fun cacheSizeBytes(ctx: Context): Long =

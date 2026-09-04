@@ -216,6 +216,8 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    // 标题行与副标题行保持一点间距，避免挤在一起
+                    Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "${weekdayNow()} · 今天也要元气满满哦 🌈",

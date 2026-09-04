@@ -102,7 +102,7 @@ fun AppRoot(container: AppContainer) {
                 composable(Screen.Stats.route) { StatsScreen(records, session, container.soundPlayer, nav) }
                 composable(Screen.Achievements.route) { AchievementsScreen(nav, records, session, container.soundPlayer) }
                 composable(Screen.Children.route) { ChildrenScreen(session, container) }
-                composable(Screen.Settings.route) { SettingsScreen(session, container, nav) }
+                composable(Screen.Settings.route) { SettingsScreen(container, nav) }
                 composable(Screen.Privacy.route) { PrivacyScreen(nav) }
                 composable(Screen.Profile.route) { ProfileScreen(nav, session, container, records) }
             }
