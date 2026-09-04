@@ -210,7 +210,7 @@ fun SettingsScreen(container: AppContainer, nav: NavHostController? = null) {
                     ) {
                         Text("提醒时间", fontSize = 15.sp, color = InkSoft, modifier = Modifier.weight(1f))
                         Text(
-                            String.format("%02d:%02d", hour, minute),
+                            String.format(java.util.Locale.US, "%02d:%02d", hour, minute),
                             fontSize = 16.sp, fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )

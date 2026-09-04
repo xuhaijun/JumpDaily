@@ -32,14 +32,13 @@ class ReminderWorker(appContext: Context, params: WorkerParameters) : Worker(app
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "跳绳提醒",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "每天提醒宝贝跳绳" }
-            nm.createNotificationChannel(channel)
-        }
+        // minSdk 26（Android 8.0）起通知渠道为强制 API，无需再判 SDK_INT
+        val channel = NotificationChannel(
+            channelId,
+            "跳绳提醒",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = "每天提醒宝贝跳绳" }
+        nm.createNotificationChannel(channel)
         val notification = NotificationCompat.Builder(applicationContext, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("爱跳绳 · 该运动啦！")

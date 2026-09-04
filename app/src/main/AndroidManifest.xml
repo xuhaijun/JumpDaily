@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 摄像头姿态估计计数 -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- 摄像头为可选功能（传感器模式不需要），声明 required=false 避免商店把无摄像头设备排除 -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <!-- 首次联网自动下载姿态模型（pose_landmarker.task） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 计步依赖加速度传感器（非必须，没有也能跑） -->

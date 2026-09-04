@@ -10,8 +10,7 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 
 /**
  * Lottie 动画封装：从 res/raw 加载 JSON 动画并循环播放。
- * 用于训练达标庆祝（celebration.json）、启动页星星（star_spin.json）等，
- * 替代纯 Canvas 手绘，动效更生动、可热替换素材。
+ * 用于训练达标庆祝（celebration.json）等，替代纯 Canvas 手绘，动效更生动、可热替换素材。
  *
  * @param resId  res/raw 下的 Lottie JSON 资源 id
  * @param iterations 循环次数，默认无限循环
