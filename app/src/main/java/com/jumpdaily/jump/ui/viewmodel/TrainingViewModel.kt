@@ -300,12 +300,8 @@ class TrainingViewModel(
                 triggerReward("太棒啦！+10 🎉")
                 voiceSpeaker.speakNumber(_count.value)
             }
-            // 半程（5 / 15 / 25…）：用里程碑鼓励语完整报数（句式更丰富）
-            _count.value % 5 == 0 -> {
-                val milestoneMsg = pick("milestone", milestonePool, _count.value)
-                triggerCheer(milestoneMsg.display)
-                voiceSpeaker.speak(milestoneMsg.template, _count.value)
-            }
+            // 2026-09-05：去掉「每 5 个里程碑语音播报」——训练中说话太频繁会打断跳绳节奏，
+            // 整十报数字保留，其余时刻安静跳（语音资源 milestonePool 保留备用，不再触发）
         }
 
         // 连击奖励：连续不间断跳到 20 / 50 / 100 时额外加分 + 弹幕喝彩
@@ -471,8 +467,8 @@ class TrainingViewModel(
 
     // ===== 儿童鼓励语语料池（按场景分组，随机轮换，且避免连续两句重复） =====
     // 语料集中维护在 audio/Encouragements.kt，便于离线生成「语音包」；此处仅引用。
+    // 注：milestonePool（每 5 个报数）已停用不再引用，语料与语音包资源仍保留备用。
     private val cheerSlowPool = Encouragements.cheerSlowPool
-    private val milestonePool = Encouragements.milestonePool
     private val steadyPool = Encouragements.steadyPool
     private val correctionPool = Encouragements.correctionPool
     private val goalPool = Encouragements.goalPool
