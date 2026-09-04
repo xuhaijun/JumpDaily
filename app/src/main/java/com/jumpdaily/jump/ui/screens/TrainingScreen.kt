@@ -61,6 +61,8 @@ import com.jumpdaily.jump.ui.components.LottieRes
 import com.jumpdaily.jump.ui.components.PopCount
 import com.jumpdaily.jump.ui.components.StatCard
 import com.jumpdaily.jump.ui.theme.InkSoft
+import com.jumpdaily.jump.ui.theme.Mint
+import com.jumpdaily.jump.ui.theme.SkyBlue
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
 import com.jumpdaily.jump.ui.viewmodel.TrainingResult
 import com.jumpdaily.jump.data.model.CountMode
@@ -111,14 +113,20 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 顶部：孩子 + 计时
+            // 顶部：孩子 + 实时状态 + 计时
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 ChildAvatar(child = child, size = 44.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(child?.name ?: "宝贝", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                    // 本次积分实时跳动，替代原来干巴巴的「正在跳绳...」
-                    Text("本次积分 ⭐ $sessionPoints", fontSize = 12.sp, color = InkSoft)
+                    // 实时状态副标题：让孩子一眼知道现在「在跳/暂停/准备」；
+                    // 积分挪到下方数据卡片里展示，这里不再重复
+                    val stateText = when {
+                        paused -> "⏸ 已暂停"
+                        running -> "传感器计数中…"
+                        else -> "准备开始…"
+                    }
+                    Text(stateText, fontSize = 12.sp, color = InkSoft)
                 }
                 Text(formatDuration(elapsed), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
@@ -130,8 +138,10 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
             ) {
                 JumpMascot(mascot, color = MaterialTheme.colorScheme.tertiary)
                 Box(Modifier.size(208.dp), contentAlignment = Alignment.Center) {
+                    val goalDone = dailyGoal > 0 && count >= dailyGoal
                     val prog = if (dailyGoal > 0) (count.toFloat() / dailyGoal).coerceIn(0f, 1f) else 0f
-                    GoalRing(progress = prog, Modifier.fillMaxSize())
+                    // 达成目标瞬间进度环换庆祝色（薄荷绿），给孩子「完成啦」的明确视觉信号
+                    GoalRing(progress = prog, reached = goalDone, modifier = Modifier.fillMaxSize())
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -147,21 +157,30 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
                         color = if (count >= dailyGoal) MaterialTheme.colorScheme.primary else InkSoft
                     )
                 }
-                // 连击提示：连跳一段时间才显示，让「连击加分」这件事被看见
-                if (streak >= 5) {
-                    Text(
-                        "🔥 连击 x$streak",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
-                }
-                Text("节奏 $cadence 个/分", fontSize = 15.sp, color = InkSoft)
             }
 
-            // 底部：暂停/继续 + 结束
+            // 数据小卡片：节奏 / 连跳 / 积分——与首页、统计页同一套 StatCard，视觉语言统一；
+            // 替代原来两行干巴巴的小字，数据一眼可读、还有点击弹跳的可爱反馈
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("⚡", "$cadence", "节奏/分", Modifier.weight(1f), color = SkyBlue, valueSize = 20.sp)
+                StatCard("🔥", "$streak", "连跳", Modifier.weight(1f), color = Mint, valueSize = 20.sp)
+                StatCard("⭐", "$sessionPoints", "本次积分", Modifier.weight(1f), valueSize = 20.sp)
+            }
+
+            // 底部：暂停提示胶囊 + 暂停/继续 + 结束
             if (paused) {
-                Text("⏸ 已暂停，休息一下吧～", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 柔和胶囊卡片替代裸文本，暂停状态更醒目也更可爱
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Text(
+                        "⏸ 已暂停，休息一下吧～",
+                        Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
             Row(Modifier.fillMaxWidth()) {
                 CuteButton(
@@ -280,14 +299,15 @@ fun ResultDialog(result: TrainingResult, goalReached: Boolean, onAgain: () -> Un
 }
 
 /**
- * 训练页大数字背后的环形目标进度：底环 + 主色进度弧。
+ * 训练页大数字背后的环形目标进度：底环 + 进度弧。
  * [progress] ∈ [0,1]，用动画平滑过渡，给孩子清晰的「离目标还有多远」反馈。
+ * [reached] 为 true 时进度弧换庆祝色（薄荷绿），与「🎉 已达成今日目标！」文字呼应。
  */
 @Composable
-private fun GoalRing(progress: Float, modifier: Modifier = Modifier) {
+private fun GoalRing(progress: Float, modifier: Modifier = Modifier, reached: Boolean = false) {
     val animated by animateFloatAsState(progress.coerceIn(0f, 1f), tween(500), label = "goal-ring")
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val progressColor = MaterialTheme.colorScheme.primary
+    val progressColor = if (reached) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
     Canvas(modifier) {
         val stroke = 14.dp.toPx()
         val r = (size.minDimension - stroke) / 2f
