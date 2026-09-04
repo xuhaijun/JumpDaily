@@ -33,7 +33,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.alpha
@@ -165,7 +165,7 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                 path,
                 object : JumpListener {
                     override fun onJump() = vm.onPoseJump()
-                    override fun onCadence(c: Int) = vm.onPoseCadence(c)
+                    override fun onCadence(cadence: Int) = vm.onPoseCadence(cadence)
                     override fun onFormIssue() = Unit // 摄像头模式暂不判动作规范
                 },
                 onLandmarks = { skeleton.value = it },
@@ -181,7 +181,17 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                 val cameraProvider = future.get()
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder()
-                    .setTargetResolution(android.util.Size(640, 480))
+                    // setTargetResolution 已弃用，改用 ResolutionSelector：目标 640x480，允许回退到更接近的可用分辨率
+                    .setResolutionSelector(
+                        androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                            .setResolutionStrategy(
+                                androidx.camera.core.resolutionselector.ResolutionStrategy(
+                                    android.util.Size(640, 480),
+                                    androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER
+                                )
+                            )
+                            .build()
+                    )
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(executor) { proxy ->
