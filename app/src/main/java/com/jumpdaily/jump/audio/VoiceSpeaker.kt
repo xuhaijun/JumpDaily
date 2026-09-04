@@ -18,14 +18,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 语音播报封装：训练时朗读中文鼓励语，提升儿童跳绳乐趣。
  *
- * 两条音色来源（自动择优）：
- * 1) 离线语音包：assets/voice/<sha1hex>.<ext> 预生成音频。任何手机播出的音色都完全一致、
- *    不依赖厂商 TTS 引擎，离线即用。缺某条则回退到 2)。
+ * 两条音色来源（2026-09-04 起默认反转：系统 TTS 优先）：
+ * 1) 系统 TextToSpeech：跨厂商自动选用当前设备引擎（华为/小米/Google/三星…），
+ *    并挑最优中文语音 + 高音高兜底「卡哇伊童音」。用户反馈厂商引擎（如华为）音色
+ *    比预生成语音包更自然好听，故默认走系统 TTS；语速加快到 1.1 避免拖沓。
+ * 2) 离线语音包：assets/voice/<sha1hex>.<ext> 预生成音频，作为 TTS 未就绪/不可用时的兜底。
+ *    播放提速 1.15 倍（原速偏慢）。任何手机播出的音色一致、离线即用。
  *    - 静态句（不含 {n}）直接整句播放；
  *    - 动态句（含 {n}，如里程碑/完成语）拆成「前缀 + 中文数字 + 后缀」三段拼接播放，
  *      数字由 assets/voice/num_<字>.wav 逐个拼出，整句仍是同一套童音。
- * 2) 系统 TextToSpeech：跨厂商自动选用当前设备引擎（华为/小米/Google/三星…），
- *    并挑最优中文语音 + 高音高兜底「卡哇伊童音」。
+ * 「离线优先」开关（设置页）打开时恢复「离线语音包优先」，强制用预生成音频/eSpeak。
  *
  * 离线引擎增强：检测到 eSpeak NG（免费开源、离线、支持中文、注册为系统 TTS 引擎）时，
  * 可在设置页开启「离线优先」，强制用 eSpeak，换任何手机都是同一套离线中文音色。
@@ -171,9 +173,9 @@ class VoiceSpeaker(context: Context) {
                 val tag = if (preferOffline) "离线" else "系统"
                 engineInfo = "引擎=$engine($tag) 语音=${pickedName ?: "默认(高音高兜底)"}"
                 appendDiag("engine_info=$engineInfo")
-                // 卡哇伊童音：高音高(1.45，比默认更尖细可爱) + 正常语速
+                // 卡哇伊童音：高音高(1.45，比默认更尖细可爱) + 语速 1.1（默认太慢，孩子嫌拖沓）
                 tts?.setPitch(1.45f)
-                tts?.setSpeechRate(1.0f)
+                tts?.setSpeechRate(1.1f)
                 ready.set(true)
                 Log.i(TAG, "TTS 就绪, $engineInfo")
                 drain()
@@ -200,67 +202,52 @@ class VoiceSpeaker(context: Context) {
 
     fun setEnabled(on: Boolean) { voiceOn = on }
 
-    /** 朗读一句话：优先离线语音包（音色一致），缺失则回退系统 TTS。emoji 会被 TTS 忽略。 */
-    fun speak(text: String) {
+    /** 系统 TTS 是否已就绪可用。 */
+    private fun ttsReady(): Boolean = tts != null && ready.get()
+
+    /**
+     * 语音出口统一规则（2026-09-04）：
+     * 「离线优先」开 → 离线语音包优先；否则系统 TTS 优先（用户反馈厂商引擎更好听），
+     * TTS 未就绪/失败再落到离线包，两者都不可用才入队等 TTS 就绪补播。
+     * TTS 走 QUEUE_FLUSH：新一句打断旧一句，天然互斥不打架。
+     */
+    private fun speakInternal(text: String, asset: () -> Boolean) {
         if (!voiceOn || text.isBlank()) return
         executor.execute {
-            // 1) 离线语音包：任意手机音色一致；命中即播放并结束
-            if (assetReady && playAsset(text)) return@execute
-            // 2) 回退系统 TTS
-            val t = tts
-            if (t == null || !ready.get()) {
-                // 初始化未完成：先入队（最多 3 句，丢弃最旧的）
-                synchronized(pending) {
-                    pending.addLast(text)
-                    while (pending.size > 3) pending.removeFirst()
-                }
+            // 1) 离线优先模式：直接试离线语音包（任意手机音色一致）
+            if (preferOffline && assetReady && asset()) return@execute
+            // 2) 默认：系统 TTS 优先（华为等厂商引擎音色更自然）
+            if (ttsReady()) {
+                runCatching { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jd_${System.nanoTime()}") }
                 return@execute
             }
-            runCatching { t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jd_${System.nanoTime()}") }
+            // 3) TTS 未就绪：先试离线包兜底
+            if (assetReady && asset()) return@execute
+            // 4) 都不行：入队（最多 3 句，丢弃最旧的），TTS 就绪后统一补播
+            synchronized(pending) {
+                pending.addLast(text)
+                while (pending.size > 3) pending.removeFirst()
+            }
         }
     }
 
+    /** 朗读一句话。emoji 会被 TTS 忽略。 */
+    fun speak(text: String) = speakInternal(text) { playAsset(text) }
+
     /**
-     * 朗读带 {n} 占位符的句子：用离线语音包「前缀 + 中文数字 + 后缀」拼接，整句同一音色。
-     * 离线片段缺失时回退系统 TTS（把 {n} 替换为真实数字）。
+     * 朗读带 {n} 占位符的句子：离线包走「前缀 + 中文数字 + 后缀」拼接（整句同一音色）；
+     * 系统 TTS 直接把 {n} 替换为真实数字朗读。
      */
     fun speak(template: String, number: Int) {
-        if (!voiceOn || template.isBlank()) return
-        executor.execute {
-            if (assetReady && playTemplateAsset(template, number)) return@execute
-            // 离线片段不齐：回退系统 TTS（童音兜底）
-            val finalText = template.replace("{n}", number.toString())
-            val t = tts
-            if (t == null || !ready.get()) {
-                synchronized(pending) {
-                    pending.addLast(finalText)
-                    while (pending.size > 3) pending.removeFirst()
-                }
-                return@execute
-            }
-            runCatching { t.speak(finalText, TextToSpeech.QUEUE_FLUSH, null, "jd_${System.nanoTime()}") }
-        }
+        val finalText = template.replace("{n}", number.toString())
+        speakInternal(finalText) { playTemplateAsset(template, number) }
     }
 
     /**
      * 只报数字、不带单位「个」：用于满整十时的干脆报数（跳到 30 就只念「三十」）。
-     * 走离线 num_X.wav 拼接，音色与整句一致；片段缺失时回退系统 TTS 念阿拉伯数字。
+     * 离线包走 num_X.wav 拼接；系统 TTS 直接念数字。
      */
-    fun speakNumber(number: Int) {
-        if (!voiceOn) return
-        executor.execute {
-            if (assetReady && playNumberAsset(number)) return@execute
-            val t = tts
-            if (t == null || !ready.get()) {
-                synchronized(pending) {
-                    pending.addLast(number.toString())
-                    while (pending.size > 3) pending.removeFirst()
-                }
-                return@execute
-            }
-            runCatching { t.speak(number.toString(), TextToSpeech.QUEUE_FLUSH, null, "jd_${System.nanoTime()}") }
-        }
-    }
+    fun speakNumber(number: Int) = speakInternal(number.toString()) { playNumberAsset(number) }
 
     /** 拼接播放纯数字（num_X.wav 序列）；全部片段命中返回 true。 */
     private fun playNumberAsset(number: Int): Boolean {
@@ -350,7 +337,12 @@ class VoiceSpeaker(context: Context) {
             if (mediaPlayer === mp2) mediaPlayer = null
             true
         }
-        runCatching { mp.prepare(); mp.start() }
+        runCatching { mp.prepare() }
+        runCatching {
+            // 用户反馈原速偏慢：离线包播放提速 1.15 倍（变速度不变调，音色不受影响）
+            mp.playbackParams = mp.playbackParams.setSpeed(1.15f)
+        }
+        runCatching { mp.start() }
     }
 
     /** 文本 -> SHA-1 十六进制，用作语音包文件名，确保「同一句同一音频」。 */

@@ -59,7 +59,12 @@ fun SplashScreen(nav: NavHostController, container: AppContainer) {
         splashDone = true
         // 已同意过则直接进首页；未同意则停在启动页并弹出同意框
         if (accepted) {
-            nav.navigate(Screen.Home.route) { popUpTo(Screen.Splash.route) { inclusive = true } }
+            // popUpTo(Splash) inclusive 清掉启动页；launchSingleTop 兜底防重复压栈，
+            // 否则一旦 navigate 触发两次，栈里会出现两个 Home——返回键关一个又冒一个
+            nav.navigate(Screen.Home.route) {
+                popUpTo(Screen.Splash.route) { inclusive = true }
+                launchSingleTop = true
+            }
         }
     }
 
@@ -81,7 +86,10 @@ fun SplashScreen(nav: NavHostController, container: AppContainer) {
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { prefs.setPrivacyAccepted(true) }
-                    nav.navigate(Screen.Home.route) { popUpTo(Screen.Splash.route) { inclusive = true } }
+                    nav.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }) { Text("同意并继续", fontWeight = FontWeight.Bold) }
             },
             dismissButton = {

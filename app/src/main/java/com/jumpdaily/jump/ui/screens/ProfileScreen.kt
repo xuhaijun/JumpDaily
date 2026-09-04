@@ -443,19 +443,22 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 图标列：稍大一号的 emoji，与文字块中线对齐
+        // 单行布局：图标、名称、说明、箭头同一行，全部垂直居中对齐（说明跟在名称后面，过长省略）
         Text(icon, fontSize = 20.sp)
-        Spacer(Modifier.width(12.dp))
-        // 文字块：标题在上、说明在下（有说明才占位，保持 2.dp 呼吸间距）
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            if (desc.isNotEmpty()) {
-                Spacer(Modifier.height(2.dp))
-                Text(desc, fontSize = 12.sp, color = InkSoft)
-            }
+        Spacer(Modifier.width(10.dp))
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        if (desc.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                desc, fontSize = 12.sp, color = InkSoft,
+                modifier = Modifier.weight(1f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
         }
         Text("›", fontSize = 18.sp, color = InkSoft)
     }

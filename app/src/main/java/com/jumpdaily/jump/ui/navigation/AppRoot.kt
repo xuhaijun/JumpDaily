@@ -1,5 +1,6 @@
 package com.jumpdaily.jump.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -13,7 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import android.app.Activity
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -113,6 +116,15 @@ fun AppRoot(container: AppContainer) {
             val barEdge by container.prefsRepository.floatBarEdge().collectAsStateWithLifecycle(initialValue = "R")
             val barY by container.prefsRepository.floatBarY().collectAsStateWithLifecycle(initialValue = 0.62f)
             val coroutine = rememberCoroutineScope()
+
+            // 首页返回键 = 直接退出应用（2026-09-04）：
+            // 修复「返回退出重开后，再按返回关掉一个首页又冒出另一个首页（浮条内容还不一样）」——
+            // 根因是栈里可能出现两个 Home（Splash navigate 竞态重复压栈），返回只是逐个弹栈。
+            // 现在首页上按返回不再弹栈，而是结束任务；配合 Splash 侧 launchSingleTop 双保险。
+            val activity = LocalContext.current as? Activity
+            BackHandler(enabled = currentRoute == Screen.Home.route) {
+                activity?.finishAffinity()
+            }
 
             // 浮条可见性：
             // - 挂起会话（paused=true）：四 tab 常驻，胶囊显示「已跳 X 个 · 时长 | 继续」

@@ -239,7 +239,8 @@ class TrainingViewModel(
             }
             _result.value = TrainingResult(c, dur, calories, maxStreak, avgCad, _sessionPoints.value)
             val completeMsg = pick("complete", completePool, c)
-            voiceSpeaker.speak(completeMsg.template, c)
+            // 等「达成目标」音效（若有）先响完再播完成语，避免两段声音叠在一起
+            fxThenVoice(600) { voiceSpeaker.speak(completeMsg.template, c) }
         } else {
             _result.value = TrainingResult(0, dur, 0, 0, 0)
         }
@@ -306,7 +307,7 @@ class TrainingViewModel(
                 awardPoints(Rewards.BONUS_EVERY_TEN)
                 pushDanmaku("+${Rewards.BONUS_EVERY_TEN}", "太棒啦")
                 triggerReward("太棒啦！+10 🎉")
-                voiceSpeaker.speakNumber(_count.value)
+                fxThenVoice(400) { voiceSpeaker.speakNumber(_count.value) }
             }
             // 2026-09-05：去掉「每 5 个里程碑语音播报」——训练中说话太频繁会打断跳绳节奏，
             // 整十报数字保留，其余时刻安静跳（语音资源 milestonePool 保留备用，不再触发）
@@ -317,8 +318,9 @@ class TrainingViewModel(
             if (currentStreak == need && comboAwarded.add(need)) {
                 awardPoints(bonus)
                 pushDanmaku("+$bonus", "连跳 $currentStreak 个不断", "🔥")
-                soundPlayer.reward()
-                voiceSpeaker.speak(pick("combo", comboPool, currentStreak).template, currentStreak)
+                fxThenVoice(fx = { soundPlayer.reward() }) {
+                    voiceSpeaker.speak(pick("combo", comboPool, currentStreak).template, currentStreak)
+                }
             }
         }
 
@@ -377,8 +379,9 @@ class TrainingViewModel(
             if (total >= prize.needPoints && earnedPrizeIds.add(prize.id)) {
                 viewModelScope.launch { prefs.addPrize(cid, prize.id) }
                 pushDanmaku(prize.name, "积分奖品解锁啦", prize.emoji)
-                voiceSpeaker.speak(pick("prize", prizePool).display)
-                soundPlayer.reward()
+                fxThenVoice(fx = { soundPlayer.reward() }) {
+                    voiceSpeaker.speak(pick("prize", prizePool).display)
+                }
             }
         }
     }
@@ -386,6 +389,19 @@ class TrainingViewModel(
     /** 推一条弹幕飘屏（最多同时保留 4 条，避免刷屏挡住画面）。 */
     private fun pushDanmaku(text: String, sub: String = "", emoji: String = "") {
         _danmaku.value = (_danmaku.value + DanmakuEvent(danmakuSeq++, text, sub, emoji)).takeLast(4)
+    }
+
+    /**
+     * 音效 → 语音顺序播放（2026-09-04）：先响短音效，停顿 [delayMs] 后再播鼓励语，
+     * 解决用户反馈的「加油声还没完就冒出另外的提示音」——此前音效与语音同帧触发，
+     * SoundPool 音效会叠在长鼓励语上，听起来混作一团。
+     */
+    private fun fxThenVoice(delayMs: Long = 500, fx: (() -> Unit)? = null, voice: () -> Unit) {
+        fx?.invoke()
+        viewModelScope.launch {
+            delay(delayMs)
+            voice()
+        }
     }
 
     /** UI 播完一条弹幕后回调，把它从队列移除。 */
@@ -409,12 +425,12 @@ class TrainingViewModel(
             lastFeedbackTs = now
             val msg = pick("cheer", cheerSlowPool)
             triggerCheer(msg.display)
-            voiceSpeaker.speak(msg.display)
+            fxThenVoice { voiceSpeaker.speak(msg.display) }
         } else if (c >= 110 && now - lastFeedbackTs > 6000) {
             lastFeedbackTs = now
             val msg = pick("steady", steadyPool)
             triggerReward("节奏超稳！加油！")
-            voiceSpeaker.speak(msg.display)
+            fxThenVoice { voiceSpeaker.speak(msg.display) }
         }
     }
 
@@ -425,8 +441,7 @@ class TrainingViewModel(
             lastFeedbackTs = now
             val msg = pick("correction", correctionPool)
             _feedback.value = Feedback(FeedbackType.CORRECTION, "${msg.display}🤔")
-            soundPlayer.correction()
-            voiceSpeaker.speak(msg.display)
+            fxThenVoice(fx = { soundPlayer.correction() }) { voiceSpeaker.speak(msg.display) }
             _mascot.value = MascotState.SAD
             viewModelScope.launch {
                 delay(900)
@@ -461,8 +476,7 @@ class TrainingViewModel(
         val msg = pick("goal", goalPool)
         _feedback.value = Feedback(FeedbackType.REWARD, "🎯 ${msg.display}")
         _confetti.value = true
-        soundPlayer.reward()
-        voiceSpeaker.speak(msg.display)
+        fxThenVoice(fx = { soundPlayer.reward() }) { voiceSpeaker.speak(msg.display) }
         _mascot.value = MascotState.HAPPY
         viewModelScope.launch {
             delay(1200)
