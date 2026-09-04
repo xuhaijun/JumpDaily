@@ -405,10 +405,11 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     }
                 } else {
                     // 训练中 HUD：节奏 + 吉祥物 + 计数 + 目标进度（儿童向、强反馈）
-                    // 节奏卡片置于跳跳星上方，二者之间留出 12.dp 间距，视觉层级更顺
+                    // 节奏卡片置于跳跳星上方；间距 20dp（叠加节奏卡自身上移 10dp，实际间隙 30dp），
+                    // 保证跳跳星上弹 27dp 时顶部不会撞进节奏卡里被压住
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         // 节奏卡片：随当前节奏快慢轻轻跳动，帮孩子卡拍子；放在跳跳星上方。
                         // 用半透明卡片承载，「节奏卡片」更聚焦；与下方跳跳星留出 12.dp 间距。

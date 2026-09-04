@@ -65,6 +65,7 @@ import com.jumpdaily.jump.ui.theme.Bubble
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
+import com.jumpdaily.jump.util.formatDateMinutes
 import com.jumpdaily.jump.util.formatDuration
 import com.jumpdaily.jump.util.formatMonthDay
 import kotlinx.coroutines.delay
@@ -370,7 +371,8 @@ private fun HistoryList(
             contentPadding = PaddingValues(bottom = 16.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(list, key = { it.id }) { rec ->
+            // 只展示最近 20 条：避免列表无限变长；数据库全量保留，运动报告统计不受影响
+            items(list.take(20), key = { it.id }) { rec ->
                 HistoryItem(rec, onDelete = { pendingDelete = rec })
             }
         }
@@ -389,7 +391,10 @@ private fun HistoryItem(rec: JumpRecord, onDelete: () -> Unit) {
             Text("🪢", fontSize = 28.sp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(formatMonthDay(rec.date), fontSize = 13.sp, color = InkSoft)
+                // 日期 + 具体时间（取记录落库时刻 createdAt，date 只是当天 0 点）
+                Text(formatDateMinutes(rec.createdAt), fontSize = 13.sp, color = InkSoft)
+                // 日期行与下方数据行之间留一点呼吸间距
+                Spacer(Modifier.height(3.dp))
                 Text(
                     "${rec.count} 个 · ${formatDuration(rec.durationSec)} · ${rec.calories} 千卡",
                     fontSize = 16.sp,

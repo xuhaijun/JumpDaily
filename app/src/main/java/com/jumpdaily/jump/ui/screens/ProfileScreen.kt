@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -446,9 +449,10 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 单行布局：图标、名称靠左；说明靠右对齐、紧贴箭头左侧并留 8dp 间距；全部垂直居中
+        // 单行布局：图标、名称靠左；说明靠右对齐、紧贴箭头左侧；Row 垂直居中 + 箭头用
+        // 真图标（ChevronRight）替代字形「›」，保证与文字严格对齐在同一中线上
         Text(icon, fontSize = 20.sp)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(6.dp))
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (desc.isNotEmpty()) {
             Text(
@@ -460,23 +464,37 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
         } else {
             Spacer(Modifier.weight(1f))
         }
-        Spacer(Modifier.width(8.dp))
-        Text("›", fontSize = 18.sp, color = InkSoft)
+        Spacer(Modifier.width(4.dp))
+        Icon(
+            Icons.Filled.KeyboardArrowRight, contentDescription = null,
+            modifier = Modifier.size(20.dp), tint = InkSoft
+        )
     }
 }
 
 // ============================ 工具函数 ============================
 
-/** 递归统计应用缓存目录大小（字节）。 */
-private fun cacheSizeBytes(ctx: Context): Long =
-    runCatching {
-        ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-    }.getOrDefault(0L)
+/** 可清理的缓存范围：内部 cacheDir + 外部 externalCacheDir + codeCache + 外部 files 下的诊断日志
+ *  （tts_init.txt / pose_error.txt 等，属可再生成的临时诊断文件）。
+ *  只算 cacheDir 系目录会长期为 0（本应用基本不往里写），「清理缓存 0 B」会让用户以为功能坏了。 */
+private fun cacheTargets(ctx: Context): List<java.io.File> = buildList {
+    add(ctx.cacheDir)
+    ctx.externalCacheDir?.let { add(it) }
+    add(ctx.codeCacheDir)
+    // 外部 files 根目录下的 .txt 诊断日志（不递归子目录，避免误伤正式数据）
+    ctx.getExternalFilesDir(null)?.let { root ->
+        root.listFiles { f -> f.isFile && f.extension == "txt" }?.forEach { add(it) }
+    }
+}
 
-/** 清空应用缓存目录（codeCache 一并清），不影响跳绳记录等数据库数据。 */
+/** 递归统计可清理缓存大小（字节）。 */
+private fun cacheSizeBytes(ctx: Context): Long = runCatching {
+    cacheTargets(ctx).asSequence().flatMap { it.walkTopDown() }.filter { it.isFile }.sumOf { it.length() }
+}.getOrDefault(0L)
+
+/** 清空缓存：cacheTargets 列出的目录/文件，不影响跳绳记录等数据库数据。 */
 private fun clearCache(ctx: Context) {
-    runCatching { ctx.cacheDir.deleteRecursively() }
-    runCatching { ctx.codeCacheDir.deleteRecursively() }
+    cacheTargets(ctx).forEach { runCatching { it.deleteRecursively() } }
 }
 
 /** 统计 assets/voice 里的离线语音包条数（用于「版本信息」展示）。 */

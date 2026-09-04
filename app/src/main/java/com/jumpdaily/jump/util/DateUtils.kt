@@ -36,6 +36,17 @@ fun formatMonthDay(ts: Long): String {
     return "%02d.%02d".format(cal.get(java.util.Calendar.MONTH) + 1, cal.get(java.util.Calendar.DAY_OF_MONTH))
 }
 
+/** 友好日期时间：MM.dd HH:mm（历史记录列表条目用，展示具体训练时刻）。 */
+fun formatDateMinutes(ts: Long): String {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+    return "%02d.%02d %02d:%02d".format(
+        cal.get(java.util.Calendar.MONTH) + 1,
+        cal.get(java.util.Calendar.DAY_OF_MONTH),
+        cal.get(java.util.Calendar.HOUR_OF_DAY),
+        cal.get(java.util.Calendar.MINUTE)
+    )
+}
+
 /** 秒 -> mm:ss */
 fun formatDuration(sec: Int): String {
     val m = sec / 60
