@@ -464,7 +464,7 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
         } else {
             Spacer(Modifier.weight(1f))
         }
-        Spacer(Modifier.width(2.dp))
+        // 不留 Spacer：箭头图标自身视口自带内边距，视觉间隙已足够，再加会显得过宽
         Icon(
             Icons.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(20.dp), tint = InkSoft
