@@ -4,16 +4,21 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import android.app.Activity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +33,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jumpdaily.jump.data.model.CountMode
+import com.jumpdaily.jump.data.repository.PreferencesRepository
 import com.jumpdaily.jump.di.AppContainer
 import com.jumpdaily.jump.ui.components.Edge
 import com.jumpdaily.jump.ui.components.FloatingJumpBar
@@ -46,6 +52,8 @@ import com.jumpdaily.jump.ui.screens.TrainingScreen
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
 import com.jumpdaily.jump.ui.viewmodel.TrainingViewModel
+import com.jumpdaily.jump.util.formatDuration
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String) {
@@ -135,6 +143,48 @@ fun AppRoot(container: AppContainer) {
                 tPaused && showBottomBar -> Mode.SUSPENDED
                 !sessionActive && currentRoute == Screen.Home.route -> Mode.IDLE
                 else -> null
+            }
+
+            // ===== 跨进程挂起会话恢复（2026-09-04）=====
+            // 上次暂停后返回键退出 App（进程被杀），TrainingViewModel 内存状态丢失，
+            // 但 pause() 已把快照落盘。首次到达首页时读快照，弹框问「继续还是放弃」：
+            // 继续 → restoreSuspended 还原个数/时长/积分/计数方式，浮条回到挂起态可一键续跳；
+            // 放弃 → 清空快照，计数作废。
+            var promptConsumed by remember { mutableStateOf(false) }
+            var suspendPrompt by remember { mutableStateOf<PreferencesRepository.SuspendedSession?>(null) }
+            LaunchedEffect(currentRoute) {
+                if (!promptConsumed && currentRoute == Screen.Home.route) {
+                    promptConsumed = true // 只在首次进首页时检查一次，避免放弃后再次进首页又弹
+                    if (!sessionActive) {
+                        suspendPrompt = container.prefsRepository.suspendedSession().first()
+                    }
+                }
+            }
+            if (!sessionActive) {
+                suspendPrompt?.let { s ->
+                    AlertDialog(
+                        onDismissRequest = { suspendPrompt = null },
+                        title = { Text("上次跳绳还没完成哦", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                "上次暂停时已跳 ${s.count} 个 · 用时 ${formatDuration(s.elapsedSec)}。\n\n" +
+                                        "「继续跳」会接着上次的计数；「放弃」则清空这次的计数。"
+                            )
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                suspendPrompt = null
+                                coroutine.launch { container.prefsRepository.clearSuspendedSession() }
+                            }) { Text("放弃") }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                suspendPrompt = null
+                                trainingVm.restoreSuspended(s.childId, s.count, s.elapsedSec, s.mode, s.sessionPoints)
+                            }) { Text("继续跳", fontWeight = FontWeight.Bold) }
+                        }
+                    )
+                }
             }
 
         Scaffold(

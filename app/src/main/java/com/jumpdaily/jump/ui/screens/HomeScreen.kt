@@ -262,6 +262,10 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                 }
             }
 
+            // 本周打卡日历（连续打卡可视化）：紧贴跳跳星卡片下方（2026-09-04 用户调整），
+            // 「打卡情况」和「吉祥物鼓励」同属情感激励区，放一起；具体数据卡片依次排后
+            WeeklyCheckIn(weekly = weekly, streak = stats.streak)
+
             // 今日目标：以每日目标（默认 600 个）为准，最佳纪录作为突破参考，可点「调整目标」改数值
             DailyGoalCard(
                 todayCount = stats.todayCount,
@@ -324,7 +328,7 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                 }
             }
 
-            // 开始跳绳（置于「本周打卡」上方，进入训练页更顺手）
+            // 开始跳绳：大按钮保持在卡片流末尾，进入训练页顺手
             // 达标彩蛋：今天目标已达成时换庆祝文案，鼓励孩子「再来一波」
             val goalReached = stats.todayCount > 0 && stats.todayCount >= dailyGoal.coerceAtLeast(600)
             CuteButton(
@@ -332,9 +336,6 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                 onClick = { nav.navigate(if (countMode == CountMode.CAMERA) Screen.CameraTraining.route else Screen.Training.route) },
                 modifier = Modifier.fillMaxWidth()
             )
-
-            // 本周打卡日历（连续打卡可视化，强化坚持习惯）
-            WeeklyCheckIn(weekly = weekly, streak = stats.streak)
         }
 
         // 新成就解锁全屏庆祝（仅弹一次）

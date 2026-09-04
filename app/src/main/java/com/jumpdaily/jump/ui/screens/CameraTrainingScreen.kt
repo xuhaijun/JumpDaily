@@ -373,8 +373,9 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         // 中部主区域：根据是否检测到人，二选一展示「引导卡」或「伙伴+计数 HUD」。
         // 关键点：两处共用「同一个」跳跳星；未检测到人时只显示引导卡，避免进入页面瞬间
         // 出现「两个头像 + 多段文字叠在中部」的混乱观感。
+        // 底部 padding 44dp：比原来的上下对称 64dp 小，让暂停/结束按钮更贴近屏幕下方
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 64.dp),
+            Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 64.dp, bottom = 44.dp),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -493,7 +494,7 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     onClick = { if (paused) child?.id?.let { vm.resume(it) } else vm.pause() },
                     modifier = Modifier.weight(1f),
                     emoji = if (paused) "▶" else "⏸",
-                    containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.72f)
+                    containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f)
                 )
                 // 防重复结束：点击后 running 立即变 false，按钮自动置灰；配合 CuteButton 内置 500ms 防抖，
                 // 既挡住儿童快速连点，也挡住 stop 耗时窗口内的重复触发。「再跳一次」后 running 恢复，按钮自动可点。
@@ -504,7 +505,7 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     enabled = running || paused,
                     modifier = Modifier.weight(1f),
                     emoji = "🛑",
-                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.72f)
+                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.55f)
                 )
             }
         }

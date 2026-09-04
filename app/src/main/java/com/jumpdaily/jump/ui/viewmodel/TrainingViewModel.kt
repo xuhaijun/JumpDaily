@@ -158,6 +158,8 @@ class TrainingViewModel(
     fun start(childId: Long, mode: CountMode = CountMode.SENSOR) {
         this.childId = childId
         _sessionMode.value = mode
+        // 开新会话 = 旧的挂起快照作废（跨进程恢复弹框不再出现）
+        viewModelScope.launch { prefs.clearSuspendedSession() }
         detector.setSensitivity(_sensitivity.value)
         _count.value = 0
         _elapsed.value = 0
@@ -209,6 +211,8 @@ class TrainingViewModel(
         ticker?.cancel()
         pointsJob?.cancel()
         flushJob?.cancel()
+        // 会话正式结束：跨进程挂起快照作废（若残留）
+        viewModelScope.launch { prefs.clearSuspendedSession() }
         // 把训练末尾攒着的积分一并落盘，否则最后几分会丢
         viewModelScope.launch { flushPoints() }
         _running.value = false
@@ -252,14 +256,38 @@ class TrainingViewModel(
 
     fun clearResult() { _result.value = null; _goalReached.value = false }
 
-    /** 暂停：停止传感器与计时，保留已计数。 */
+    /** 暂停：停止传感器与计时，保留已计数；并把快照落盘，供冷启动后「继续/放弃」恢复。 */
     fun pause() {
         if (_running.value && !_paused.value) {
             detector.stop()
             ticker?.cancel()
             _running.value = false
             _paused.value = true
+            // 落盘挂起快照（count=0 时 setSuspendedSession 内部会跳过，没啥可恢复的）
+            val cid = childId
+            val mode = _sessionMode.value
+            if (cid != null && mode != null) {
+                viewModelScope.launch {
+                    prefs.setSuspendedSession(cid, _count.value, _elapsed.value, mode, _sessionPoints.value)
+                }
+            }
         }
+    }
+
+    /**
+     * 跨进程恢复挂起会话（2026-09-04）：冷启动后用户在弹框选「继续」时调用。
+     * 只还原状态不启动传感器/计时（保持挂起态），浮条显示上次的个数与时长，
+     * 点浮条回到对应计数方式页后再 resume() 接着跳。
+     */
+    fun restoreSuspended(childId: Long, count: Int, elapsedSec: Int, mode: CountMode, sessionPoints: Int) {
+        if (_running.value || _paused.value) return // 已有活会话，忽略
+        this.childId = childId
+        _sessionMode.value = mode
+        _count.value = count
+        _elapsed.value = elapsedSec
+        _sessionPoints.value = sessionPoints
+        _paused.value = true
+        _running.value = false
     }
 
     /** 继续：恢复传感器与计时（计时在暂停期间不累加，恢复后接着算）。 */

@@ -182,9 +182,11 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[redeemedKey(childId)] = (it[redeemedKey(childId)] ?: emptySet()) - prizeId }
 
     // ===== 跳绳浮条位置记忆（全局，不按孩子隔离） =====
+    // 2026-09-04：key 升级为 v2——用户要求浮条默认停靠右侧，旧 key 里存着测试期拖到左侧的
+    // 位置记忆，换新 key 等效一次「位置重置」，之后仍正常记忆拖动位置。
 
-    private val floatBarEdgeKey = stringPreferencesKey("float_bar_edge")
-    private val floatBarYKey = floatPreferencesKey("float_bar_y")
+    private val floatBarEdgeKey = stringPreferencesKey("float_bar_edge_v2")
+    private val floatBarYKey = floatPreferencesKey("float_bar_y_v2")
 
     /** 浮条吸附边（"L"/"R"）。 */
     fun floatBarEdge(): Flow<String> = context.dataStore.data.map { it[floatBarEdgeKey] ?: "R" }
@@ -197,5 +199,57 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit {
             it[floatBarEdgeKey] = edge
             it[floatBarYKey] = yRatio
+        }
+
+    // ===== 暂停挂起会话的跨进程持久化（2026-09-04） =====
+    // 场景：训练中暂停（或直接退出 App）后进程被杀，Activity 级 TrainingViewModel 的
+    // 内存状态没了。把「孩子 / 已跳个数 / 已用时 / 计数方式 / 本次积分」落盘，
+    // 下次冷启动弹框询问「继续还是放弃」，实现真正的跨进程挂起续跳。
+
+    /** 一条挂起中的会话快照。 */
+    data class SuspendedSession(
+        val childId: Long,
+        val count: Int,
+        val elapsedSec: Int,
+        val mode: CountMode,
+        val sessionPoints: Int
+    )
+
+    private val susChildKey = longPreferencesKey("suspended_child_id")
+    private val susCountKey = intPreferencesKey("suspended_count")
+    private val susElapsedKey = intPreferencesKey("suspended_elapsed")
+    private val susModeKey = stringPreferencesKey("suspended_mode")
+    private val susPointsKey = intPreferencesKey("suspended_points")
+
+    /** 当前是否有挂起中的会话快照（null = 无）。 */
+    fun suspendedSession(): Flow<SuspendedSession?> = context.dataStore.data.map { p ->
+        val child = p[susChildKey] ?: return@map null
+        val count = p[susCountKey] ?: return@map null
+        SuspendedSession(
+            childId = child,
+            count = count,
+            elapsedSec = p[susElapsedKey] ?: 0,
+            mode = CountMode.fromKey(p[susModeKey] ?: CountMode.CAMERA.key),
+            sessionPoints = p[susPointsKey] ?: 0
+        )
+    }
+
+    /** 保存/覆盖挂起会话快照（pause 时调用；count=0 不存，避免「0 个还问继续」）。 */
+    suspend fun setSuspendedSession(childId: Long, count: Int, elapsedSec: Int, mode: CountMode, sessionPoints: Int) {
+        if (count <= 0) return
+        context.dataStore.edit {
+            it[susChildKey] = childId
+            it[susCountKey] = count
+            it[susElapsedKey] = elapsedSec
+            it[susModeKey] = mode.key
+            it[susPointsKey] = sessionPoints
+        }
+    }
+
+    /** 清除挂起会话快照（放弃 / 正式结束保存 / 开新会话时调用）。 */
+    suspend fun clearSuspendedSession() =
+        context.dataStore.edit {
+            it.remove(susChildKey); it.remove(susCountKey); it.remove(susElapsedKey)
+            it.remove(susModeKey); it.remove(susPointsKey)
         }
 }

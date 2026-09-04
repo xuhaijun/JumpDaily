@@ -446,20 +446,21 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 单行布局：图标、名称、说明、箭头同一行，全部垂直居中对齐（说明跟在名称后面，过长省略）
+        // 单行布局：图标、名称靠左；说明靠右对齐、紧贴箭头左侧并留 8dp 间距；全部垂直居中
         Text(icon, fontSize = 20.sp)
         Spacer(Modifier.width(10.dp))
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (desc.isNotEmpty()) {
-            Spacer(Modifier.width(8.dp))
             Text(
                 desc, fontSize = 12.sp, color = InkSoft,
                 modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         } else {
             Spacer(Modifier.weight(1f))
         }
+        Spacer(Modifier.width(8.dp))
         Text("›", fontSize = 18.sp, color = InkSoft)
     }
 }
