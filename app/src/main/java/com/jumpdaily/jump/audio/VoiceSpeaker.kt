@@ -16,6 +16,33 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
+ * 语音优先级：数值越大越重要。
+ *
+ * 2026-09-07 之前各调用方各自节流、互不知情，30 秒内会冒出 13 句语音（平均 2.3 秒一句），
+ * 而 TTS 用 QUEUE_FLUSH 会让后一句直接掐断前一句 —— 听感就是「话说到一半断了」。
+ * 现在统一由 [VoiceSpeaker] 仲裁：低优先级遇到「正在播/刚播完」直接丢弃，只有更高优先级才能抢占。
+ */
+enum class VoicePriority(val level: Int) {
+    /** 引导提示：找不到人、开灯提醒。随时可丢，最不重要。 */
+    HINT(0),
+
+    /** 常规教练反馈：节奏鼓励、动作纠正。 */
+    COACH(1),
+
+    /** 报数：整 N 个时念一下数字。 */
+    COUNT(2),
+
+    /** 阶段性成就：连击奖励。 */
+    MILESTONE(3),
+
+    /** 重要庆祝：目标达成、奖品解锁、训练完成。几乎总是要播出来。 */
+    CELEBRATE(4),
+
+    /** 开场语：进入训练时的第一句，不应被任何东西挡掉。 */
+    START(5),
+}
+
+/**
  * 语音播报封装：训练时朗读中文鼓励语，提升儿童跳绳乐趣。
  *
  * 两条音色来源（2026-09-04 起默认反转：系统 TTS 优先）：
@@ -60,8 +87,30 @@ class VoiceSpeaker(context: Context) {
     /** 离线语音包播放用的单一 MediaPlayer，保证多句互斥（类似 QUEUE_FLUSH）。 */
     @Volatile private var mediaPlayer: MediaPlayer? = null
 
+    // ===== 全局仲裁状态（2026-09-07）=====
+    /** 当前是否正在发声（TTS 或离线包任一在播）。 */
+    @Volatile private var speaking = false
+
+    /** 上一次开始发声的时间戳。 */
+    @Volatile private var lastStartTs = 0L
+
+    /** 上一次发声的优先级层级（用于判断新句能否抢占）。 */
+    @Volatile private var lastLevel = -1
+
     private companion object {
         const val TAG = "VoiceSpeaker"
+        /**
+         * 全局最小发声间隔（ms）：上一句播完（或开始播）后至少隔这么久才允许下一句。
+         * 4 秒 ≈ 一句中文鼓励语的时长，保证孩子能听清、不被下一句压住。
+         */
+        const val MIN_GAP_MS = 4000L
+        /**
+         * 抢占最小间隔（ms）：即使是更高优先级要打断，也至少离上一句开始 1.2 秒。
+         * 防止同一帧内两句「同帧撞车」时后一句把前一句掐成半截。
+         */
+        const val PREEMPT_MIN_GAP_MS = 1200L
+        /** utteranceId 前缀：jd_<level>_<nano>，回调时解析出优先级。 */
+        const val UTT_PREFIX = "jd_"
         /** eSpeak NG：免费开源、离线、支持中文、注册为系统 TTS 引擎；跨厂商一致，是「离线语音包」首选补充引擎。 */
         const val ESPEAK_PKG = "com.reecedunn.espeak"
         const val ESPEAK_FDROID = "https://f-droid.org/en/packages/com.reecedunn.espeak/"
@@ -177,6 +226,8 @@ class VoiceSpeaker(context: Context) {
                 tts?.setPitch(1.45f)
                 tts?.setSpeechRate(1.1f)
                 ready.set(true)
+                // 挂载播报回调以精确感知「是否还在说」——全局仲裁依赖它判断能否插话
+                attachUtteranceListener()
                 Log.i(TAG, "TTS 就绪, $engineInfo")
                 drain()
             } else {
@@ -205,24 +256,85 @@ class VoiceSpeaker(context: Context) {
     /** 系统 TTS 是否已就绪可用。 */
     private fun ttsReady(): Boolean = tts != null && ready.get()
 
+    // ==================== 全局语音仲裁（2026-09-07） ====================
+
+    /** 标记「开始发声」：记录时间戳与优先级，供后续仲裁判断。 */
+    private fun markStart(level: Int) {
+        speaking = true
+        lastStartTs = System.currentTimeMillis()
+        lastLevel = level
+    }
+
+    /** 标记「发声结束」。 */
+    private fun markDone() { speaking = false }
+
+    /**
+     * 挂载 TTS 播报回调，用来精确感知「是否还在说」（比按字数估算时长可靠得多）。
+     * 必须在主线程调用 —— onInit 回调即主线程，故在初始化成功后挂载。
+     */
+    private fun attachUtteranceListener() {
+        runCatching {
+            tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    markStart(parseLevel(utteranceId))
+                }
+
+                override fun onDone(utteranceId: String?) { markDone() }
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) { markDone() }
+
+                @Deprecated("legacy API")
+                override fun onError(utteranceId: String?) { markDone() }
+            })
+        }.onFailure { appendDiag("utterance_listener_failed ${it.message}") }
+    }
+
+    /** 从 utteranceId（jd_<level>_<nano>）解析出优先级层级。 */
+    private fun parseLevel(utteranceId: String?): Int {
+        val lvl = utteranceId?.removePrefix(UTT_PREFIX)?.substringBefore('_')?.toIntOrNull()
+        return lvl ?: VoicePriority.COACH.level
+    }
+
+    /**
+     * 仲裁：这一句到底该不该播？
+     *
+     * 规则（解决「30 秒 13 句、互相掐断」）：
+     * 1) 空闲且距上次发声 ≥ [MIN_GAP_MS] → 允许；
+     * 2) 正在播 / 距上次太近 → 只有「优先级更高」且已过 [PREEMPT_MIN_GAP_MS] 才允许抢占；
+     * 3) 其余一律丢弃（宁可少说，也不要把话说一半）。
+     */
+    private fun shouldSpeak(level: Int): Boolean {
+        val gap = System.currentTimeMillis() - lastStartTs
+        if (!speaking && gap >= MIN_GAP_MS) return true
+        return level > lastLevel && gap >= PREEMPT_MIN_GAP_MS
+    }
+
     /**
      * 语音出口统一规则（2026-09-04）：
      * 「离线优先」开 → 离线语音包优先；否则系统 TTS 优先（用户反馈厂商引擎更好听），
      * TTS 未就绪/失败再落到离线包，两者都不可用才入队等 TTS 就绪补播。
      * TTS 走 QUEUE_FLUSH：新一句打断旧一句，天然互斥不打架。
      */
-    private fun speakInternal(text: String, asset: () -> Boolean) {
+    private fun speakInternal(text: String, level: Int, asset: (Int) -> Boolean) {
         if (!voiceOn || text.isBlank()) return
         executor.execute {
+            // ★ 全局仲裁：静默窗口内、且优先级不够高的一律丢弃，不打断正在说的话
+            if (!shouldSpeak(level)) {
+                appendDiag("voice_drop level=$level last=$lastLevel speaking=$speaking")
+                return@execute
+            }
             // 1) 离线优先模式：直接试离线语音包（任意手机音色一致）
-            if (preferOffline && assetReady && asset()) return@execute
+            if (preferOffline && assetReady && asset(level)) return@execute
             // 2) 默认：系统 TTS 优先（华为等厂商引擎音色更自然）
             if (ttsReady()) {
-                runCatching { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jd_${System.nanoTime()}") }
+                markStart(level)
+                runCatching {
+                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "$UTT_PREFIX${level}_${System.nanoTime()}")
+                }
                 return@execute
             }
             // 3) TTS 未就绪：先试离线包兜底
-            if (assetReady && asset()) return@execute
+            if (assetReady && asset(level)) return@execute
             // 4) 都不行：入队（最多 3 句，丢弃最旧的），TTS 就绪后统一补播
             synchronized(pending) {
                 pending.addLast(text)
@@ -231,26 +343,31 @@ class VoiceSpeaker(context: Context) {
         }
     }
 
-    /** 朗读一句话。emoji 会被 TTS 忽略。 */
-    fun speak(text: String) = speakInternal(text) { playAsset(text) }
+    /**
+     * 朗读一句话。emoji 会被 TTS 忽略。
+     * [priority] 决定被静默窗口拦下时能否播出，见 [VoicePriority]。
+     */
+    fun speak(text: String, priority: VoicePriority = VoicePriority.COACH) =
+        speakInternal(text, priority.level) { lvl -> playAsset(text, lvl) }
 
     /**
      * 朗读带 {n} 占位符的句子：离线包走「前缀 + 中文数字 + 后缀」拼接（整句同一音色）；
      * 系统 TTS 直接把 {n} 替换为真实数字朗读。
      */
-    fun speak(template: String, number: Int) {
+    fun speak(template: String, number: Int, priority: VoicePriority = VoicePriority.COACH) {
         val finalText = template.replace("{n}", number.toString())
-        speakInternal(finalText) { playTemplateAsset(template, number) }
+        speakInternal(finalText, priority.level) { lvl -> playTemplateAsset(template, number, lvl) }
     }
 
     /**
-     * 只报数字、不带单位「个」：用于满整十时的干脆报数（跳到 30 就只念「三十」）。
+     * 只报数字、不带单位「个」：用于满整 N 个时的干脆报数（跳到 20 就只念「二十」）。
      * 离线包走 num_X.wav 拼接；系统 TTS 直接念数字。
      */
-    fun speakNumber(number: Int) = speakInternal(number.toString()) { playNumberAsset(number) }
+    fun speakNumber(number: Int, priority: VoicePriority = VoicePriority.COUNT) =
+        speakInternal(number.toString(), priority.level) { lvl -> playNumberAsset(number, lvl) }
 
     /** 拼接播放纯数字（num_X.wav 序列）；全部片段命中返回 true。 */
-    private fun playNumberAsset(number: Int): Boolean {
+    private fun playNumberAsset(number: Int, level: Int): Boolean {
         val cn = toChineseNum(number) ?: return false
         val names = mutableListOf<String>()
         for (ch in cn) {
@@ -258,12 +375,12 @@ class VoiceSpeaker(context: Context) {
             names.add(n)
         }
         appendDiag("play_num n=$number cn=$cn")
-        playListSequential(names, 0)
+        playListSequential(names, 0, level)
         return true
     }
 
     /** 尝试拼接播放动态句（前缀 + 数字 + 后缀）。全部片段命中返回 true。 */
-    private fun playTemplateAsset(template: String, number: Int): Boolean {
+    private fun playTemplateAsset(template: String, number: Int, level: Int): Boolean {
         val parts = template.split("{n}", limit = 2)
         val pre = parts[0]
         val suf = if (parts.size > 1) parts[1] else ""
@@ -278,15 +395,15 @@ class VoiceSpeaker(context: Context) {
             names.add(n)
         }
         appendDiag("play_seq n=${names.size} tmpl=$template")
-        playListSequential(names, 0)
+        playListSequential(names, 0, level)
         return true
     }
 
     /** 尝试播放离线语音包；命中返回 true。任意手机音色完全一致。 */
-    private fun playAsset(text: String): Boolean {
+    private fun playAsset(text: String, level: Int): Boolean {
         val name = resolveAssetName(text) ?: return false
         appendDiag("play_asset $name")
-        playListSequential(listOf(name), 0)
+        playListSequential(listOf(name), 0, level)
         return true
     }
 
@@ -309,8 +426,10 @@ class VoiceSpeaker(context: Context) {
      * 靠 setOnCompletionListener 链式播下一句；任一段出错则停止整段。
      * 每个片段独立 openFd，播放完（completion/error）才 close，避免 fd 被提前回收导致播放失败。
      */
-    private fun playListSequential(names: List<String>, index: Int) {
-        if (index >= names.size) return
+    private fun playListSequential(names: List<String>, index: Int, level: Int = VoicePriority.COACH.level) {
+        if (index >= names.size) { markDone(); return }
+        // 第一段落定即视为「开始发声」，供全局仲裁计算静默窗口
+        if (index == 0) markStart(level)
         val name = names[index]
         val afd = runCatching { appContext.assets.openFd(name) }.getOrNull() ?: return
         val mp = MediaPlayer()
@@ -323,18 +442,20 @@ class VoiceSpeaker(context: Context) {
             runCatching { afd.close() }
             runCatching { mp.release() }
             mediaPlayer = null
+            markDone()
             return
         }
         mp.setOnCompletionListener {
             runCatching { afd.close() }
             runCatching { it.release() }
             if (mediaPlayer === it) mediaPlayer = null
-            playListSequential(names, index + 1) // 播下一句
+            playListSequential(names, index + 1, level) // 播下一句（播完最后一段会自动 markDone）
         }
         mp.setOnErrorListener { mp2, _, _ ->
             runCatching { afd.close() }
             runCatching { mp2.release() }
             if (mediaPlayer === mp2) mediaPlayer = null
+            markDone()
             true
         }
         runCatching { mp.prepare() }

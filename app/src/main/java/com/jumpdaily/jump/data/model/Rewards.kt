@@ -29,7 +29,8 @@ object Rewards {
     val GOOD_CADENCE_RANGE = 60..140
     /** 节奏好评的额外积分与最短触发间隔（毫秒）。 */
     const val BONUS_GOOD_CADENCE = 3
-    const val GOOD_CADENCE_INTERVAL_MS = 12_000L
+    /** 节奏达标时「小奖品」的发放间隔：2026-09-07 由 12s 拉长到 15s（与 steady/cheer 共用节流，降语音密度）。 */
+    const val GOOD_CADENCE_INTERVAL_MS = 15_000L
 
     /** 达成每日目标的额外积分。 */
     const val BONUS_DAILY_GOAL = 50

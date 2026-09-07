@@ -44,21 +44,27 @@ private data class FloatReward(val id: Int, val emoji: String, val color: Color,
  * 适合叠在相机预览或训练主界面之上，给小朋友即时成就感。
  */
 @Composable
-fun FloatingRewards(count: Int, modifier: Modifier = Modifier) {
+fun FloatingRewards(count: Int, modifier: Modifier = Modifier, every: Int = 1) {
     var items by remember { mutableStateOf(emptyList<FloatReward>()) }
     var prev by remember { mutableStateOf(count) }
     var nextId by remember { mutableStateOf(0) }
     val rnd = remember { Random(System.currentTimeMillis()) }
 
     LaunchedEffect(count) {
-        if (count > prev) {
-            val reward = FloatReward(
-                id = nextId++,
-                emoji = REWARD_EMOJIS[rnd.nextInt(REWARD_EMOJIS.size)],
-                color = REWARD_COLORS[rnd.nextInt(REWARD_COLORS.size)],
-                spread = (rnd.nextFloat() - 0.5f) * 220f // 横向散布 ±110dp
-            )
-            items = (items + reward).takeLast(24) // 限制并发数量，避免堆积
+        val step = every.coerceAtLeast(1)
+        // 每满 [every] 个才冒一批（2026-09-07）：原来每跳一个就冒，
+        // 按 2 个/秒算屏幕上常驻 2~3 个 emoji 在飞，画面太满、抢大数字的注意力。
+        // 一次冒 2 个，降频后仍有「一直在庆祝」的观感。
+        if (count > prev && count / step > prev / step) {
+            val batch = List(2) {
+                FloatReward(
+                    id = nextId++,
+                    emoji = REWARD_EMOJIS[rnd.nextInt(REWARD_EMOJIS.size)],
+                    color = REWARD_COLORS[rnd.nextInt(REWARD_COLORS.size)],
+                    spread = (rnd.nextFloat() - 0.5f) * 220f // 横向散布 ±110dp
+                )
+            }
+            items = (items + batch).takeLast(12) // 限制并发数量，避免堆积
         }
         prev = count
     }

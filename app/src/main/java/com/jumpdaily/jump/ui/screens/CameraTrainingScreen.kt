@@ -57,6 +57,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.jumpdaily.jump.camera.PoseJumpDetector
 import com.jumpdaily.jump.camera.PoseModelProvider
+import com.jumpdaily.jump.audio.VoicePriority
 import com.jumpdaily.jump.data.model.CountMode
 import com.jumpdaily.jump.di.AppContainer
 import com.jumpdaily.jump.sensor.JumpListener
@@ -300,11 +301,13 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     LaunchedEffect(hasPose, running, modelPath) {
         if (!hasPose && running && hasPermission && modelPath != null && poseError == null) {
             val now = System.currentTimeMillis()
-            if (now - lastNoPoseSpeakTs > 8000) {
+            // 8s → 15s：原来站偏一点就被反复喊，太吵
+            if (now - lastNoPoseSpeakTs > 15000) {
                 lastNoPoseSpeakTs = now
                 // 轮换取下一句，避免反复同一句；池子只有 4 句，简单取模即可
                 lastNoPoseIdx = (lastNoPoseIdx + 1) % noPoseLines.size
-                container.voiceSpeaker.speak(noPoseLines[lastNoPoseIdx])
+                // 优先级最低：若此刻正在播别的（报数/鼓励），这句直接丢弃
+                container.voiceSpeaker.speak(noPoseLines[lastNoPoseIdx], VoicePriority.HINT)
             }
         }
     }
@@ -317,7 +320,7 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             if (now - lastFoundTs > 20000) {
                 lastFoundTs = now
                 container.soundPlayer.star()
-                container.voiceSpeaker.speak("找到你啦，我们一起跳吧！")
+                container.voiceSpeaker.speak("找到你啦，我们一起跳吧！", VoicePriority.HINT)
             }
         }
     }
@@ -646,14 +649,14 @@ private fun TrainingHud(vm: TrainingViewModel, pulse: MutableState<Float>) {
         // 跳跳星半透明：与节奏卡/按钮的半透明风格统一，不挡镜头画面
         JumpMascot(mascot, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.alpha(0.5f))
 
-        // 计数药丸：糖果渐变 + 柔光呼吸，每跳一下更醒目
+        // 计数区：大数字 + 右上角连击徽章。
+        // 连击 2026-09-07 由「单独占一行」改为叠在数字右上角的徽章——同屏纵向元素少一块。
         Box(contentAlignment = Alignment.Center) {
-            val glowA by rememberInfiniteTransition(label = "count-glow")
-                .animateFloat(0.45f, 0.85f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "count-glow-a")
+            // 柔光底改为静态：原为无限呼吸动画，与大数字弹跳语义重复，且常驻动画白耗电
             Box(
                 Modifier
                     .size(150.dp, 120.dp)
-                    .alpha(glowA)
+                    .alpha(0.62f)
                     .background(
                         Brush.radialGradient(
                             listOf(SunYellow.copy(alpha = 0.9f), Color.Transparent),
@@ -665,18 +668,26 @@ private fun TrainingHud(vm: TrainingViewModel, pulse: MutableState<Float>) {
                 PopCount(count, fontSize = 72.sp, color = Color.White)
                 Text("个", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
             }
-        }
-
-        // 连击提示：连跳一段时间才显示，让「连击加分」这件事被看见
-        if (streak >= 5) {
-            Text("🔥 连击 x$streak", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SunYellow)
+            // 连跳 5 个以上才亮出来，避免刚开跳就挂个徽章分散注意力
+            if (streak >= 5) {
+                Text(
+                    "🔥 x$streak",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SunYellow,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.38f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
         }
 
         if (dailyGoal > 0) {
             GoalProgressWithMilestone(cur = count, goal = dailyGoal)
         }
-
-        Text("和影子伙伴一起跳！", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
     }
 }
 
@@ -761,11 +772,14 @@ private fun GuideCard() {
     }
 }
 
-/** 上浮奖励层：内部自己 collect count，避免计数变化重组整页。 */
+/**
+ * 上浮奖励层：内部自己 collect count，避免计数变化重组整页。
+ * every = 5：每满 5 个冒一批（原为每跳一个，画面太满）。
+ */
 @Composable
 private fun RewardLayer(vm: TrainingViewModel, modifier: Modifier = Modifier) {
     val count by vm.count.collectAsStateWithLifecycle()
-    FloatingRewards(count = count, modifier = modifier)
+    FloatingRewards(count = count, every = 5, modifier = modifier)
 }
 
 /** 积分弹幕层：内部自己 collect 弹幕事件。 */
