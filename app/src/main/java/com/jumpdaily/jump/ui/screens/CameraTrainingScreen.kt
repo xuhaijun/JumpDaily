@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -45,6 +46,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.theme.Mint
 import com.jumpdaily.jump.ui.theme.PinkSecondary
+import com.jumpdaily.jump.ui.theme.SkyBlue
 import com.jumpdaily.jump.ui.theme.SunYellow
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -73,6 +75,7 @@ import com.jumpdaily.jump.ui.viewmodel.TrainingViewModel
 import com.jumpdaily.jump.util.formatDuration
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -95,25 +98,24 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         factory = container.trainingFactory
     )
     val child by session.currentChild.collectAsStateWithLifecycle()
-    val count by vm.count.collectAsStateWithLifecycle()
-    val elapsed by vm.elapsed.collectAsStateWithLifecycle()
-    val cadence by vm.cadence.collectAsStateWithLifecycle()
-    val mascot by vm.mascot.collectAsStateWithLifecycle()
     val feedback by vm.feedback.collectAsStateWithLifecycle()
     val confetti by vm.confetti.collectAsStateWithLifecycle()
     val result by vm.result.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
     val paused by vm.paused.collectAsStateWithLifecycle()
     val goalReached by vm.goalReached.collectAsStateWithLifecycle()
-    val dailyGoal by vm.dailyGoal.collectAsStateWithLifecycle()
-    // 积分与弹幕（「+10」/ 奖品飘屏）
-    val sessionPoints by vm.sessionPoints.collectAsStateWithLifecycle()
-    val danmaku by vm.danmaku.collectAsStateWithLifecycle()
-    val streak by vm.streak.collectAsStateWithLifecycle()
+    // ⚠️ 性能约定（2026-09-07）：count / elapsed / cadence / streak / sessionPoints 都是高频 state，
+    // 这里**一律不读**——否则计时每秒、积分每跳都会重组整页（含相机预览 AndroidView），卡顿的主因之一。
+    // 它们改由下方各自的 HUD 子组件内部 collect，重组范围被限制在组件自身。
 
-    // 最新一帧人体关键点（供骨架叠加层绘制）；写在独立 state 上，
-    // 仅 PoseOverlay 会因每帧更新而重组，避免大数字等 HUD 频繁重组。
+    // 最新一帧人体关键点：只交给 PoseOverlay 在「绘制阶段」读取（重绘不重组）。
+    // 页面本身只依赖「是否检测到人」这个低频布尔值，避免每帧重组。
     val skeleton = remember { mutableStateOf(emptyList<Pair<Float, Float>>()) }
+    var hasPose by remember { mutableStateOf(false) }
+    // 计数瞬间的发光脉冲（0~1）：每跳一下影子伙伴亮一下，只在绘制阶段消费，不引发重组
+    val pulse = remember { mutableFloatStateOf(0f) }
+    // 画面过暗提示（关灯/逆光会让姿态识别失效，及时提醒家长）
+    var dimLight by remember { mutableStateOf(false) }
 
     // 姿态引擎初始化失败（如 MediaPipe 原生库在 x86/x86_64 模拟器缺失）→ 友好降级，不崩溃
     var poseError by remember { mutableStateOf<Throwable?>(null) }
@@ -123,7 +125,13 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     val activity = ctx as ComponentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember { PreviewView(ctx) }
+    val previewView = remember {
+        PreviewView(ctx).apply {
+            // 页面上方叠了大量 Compose 图层（骨架/HUD/弹幕），TextureView(PERFORMANCE) 比
+            // 默认 SurfaceView(COMPATIBLE) 更稳，不会出现层级撕裂与叠加闪烁
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+        }
+    }
 
     var hasPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -170,9 +178,40 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     override fun onCadence(cadence: Int) = vm.onPoseCadence(cadence)
                     override fun onFormIssue() = Unit // 摄像头模式暂不判动作规范
                 },
-                onLandmarks = { skeleton.value = it },
+                onLandmarks = { pts ->
+                    skeleton.value = pts
+                    // 只在「有人 ↔ 无人」状态翻转时写 state：每帧都写会让页面每帧重组
+                    val detected = pts.isNotEmpty()
+                    if (detected != hasPose) hasPose = detected
+                },
                 onInitError = { t -> scope.launch(Dispatchers.Main) { poseError = t } }
             )
+        }
+    }
+
+    // 分析帧节流时间戳（跨 bindCamera 调用保留；数组包装以便在 lambda 里改值）
+    val frameStamp = remember { longArrayOf(0L) }
+
+    /**
+     * 采样画面平均亮度：先缩到 32×24 再算灰度均值，每帧成本 < 0.2ms。
+     * 过暗（关灯/逆光）时姿态识别会明显变差，及时提示家长开灯。
+     */
+    fun reportBrightness(bmp: Bitmap) {
+        runCatching {
+            val small = Bitmap.createScaledBitmap(bmp, 32, 24, false)
+            val px = IntArray(32 * 24)
+            small.getPixels(px, 0, 32, 0, 0, 32, 24)
+            var sum = 0
+            for (v in px) {
+                val r = (v shr 16) and 0xFF
+                val g = (v shr 8) and 0xFF
+                val b = v and 0xFF
+                sum += (r * 299 + g * 587 + b * 114) / 1000
+            }
+            small.recycle()
+            val tooDim = (sum / px.size) < BRIGHTNESS_DIM
+            // 只在状态翻转时写 state（避免每帧触发重组）
+            if (tooDim != dimLight) scope.launch(Dispatchers.Main) { dimLight = tooDim }
         }
     }
 
@@ -197,9 +236,17 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(executor) { proxy ->
-                    val bmp = proxy.toBitmap()
-                    val rotated = rotateBitmap(bmp, proxy.imageInfo.rotationDegrees)
-                    detector?.processFrame(rotated)
+                    val now = System.currentTimeMillis()
+                    // 跳帧节流：跳绳约 1~3 次/秒，15fps 检测绰绰有余，却能省掉大量
+                    // toBitmap/旋转/推理开销——这是摄像头页发热掉帧的主要来源
+                    if (now - frameStamp[0] >= FRAME_INTERVAL_MS) {
+                        frameStamp[0] = now
+                        val bmp = proxy.toBitmap()
+                        val rotated = rotateBitmap(bmp, proxy.imageInfo.rotationDegrees)
+                        detector?.processFrame(rotated)
+                        reportBrightness(rotated)
+                    }
+                    // 无论是否处理都必须 close，否则相机管线会被阻塞
                     proxy.close()
                 }
                 cameraProvider.unbindAll()
@@ -238,7 +285,8 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         else if (!hasPermission) promptCameraPermission()
     }
 
-    // 看不到人时（骨架为空）：用语音温柔引导小朋友站进画面；节流 8 秒，避免每帧都喊
+    // 看不到人时：用语音温柔引导小朋友站进画面；节流 8 秒，避免反复喊
+    // 依赖低频的 hasPose 而非每帧骨架，避免每帧启停协程
     val noPoseLines = remember {
         listOf(
             "站进来一点，让跳跳星看到你，一起开心地跳！",
@@ -249,14 +297,27 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     }
     var lastNoPoseIdx by remember { mutableStateOf(-1) }
     var lastNoPoseSpeakTs by remember { mutableStateOf(0L) }
-    LaunchedEffect(skeleton.value.isEmpty()) {
-        if (skeleton.value.isEmpty() && running && hasPermission && modelPath != null && poseError == null) {
+    LaunchedEffect(hasPose, running, modelPath) {
+        if (!hasPose && running && hasPermission && modelPath != null && poseError == null) {
             val now = System.currentTimeMillis()
             if (now - lastNoPoseSpeakTs > 8000) {
                 lastNoPoseSpeakTs = now
                 // 轮换取下一句，避免反复同一句；池子只有 4 句，简单取模即可
                 lastNoPoseIdx = (lastNoPoseIdx + 1) % noPoseLines.size
                 container.voiceSpeaker.speak(noPoseLines[lastNoPoseIdx])
+            }
+        }
+    }
+
+    // 「找到你啦」欢迎：从「没人」变「有人」时给一次音效 + 语音，孩子立刻知道可以开跳（节流 20 秒）
+    var lastFoundTs by remember { mutableStateOf(0L) }
+    LaunchedEffect(hasPose) {
+        if (hasPose && running) {
+            val now = System.currentTimeMillis()
+            if (now - lastFoundTs > 20000) {
+                lastFoundTs = now
+                container.soundPlayer.star()
+                container.voiceSpeaker.speak("找到你啦，我们一起跳吧！")
             }
         }
     }
@@ -302,14 +363,13 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             }
         }
 
-        // 实时骨架叠加层：让孩子在相机画面上看到自己的跳绳姿态（发光「影子伙伴」）
-        PoseOverlay(skeleton = skeleton, modifier = Modifier.fillMaxSize())
+        // 实时骨架叠加层：让孩子在相机画面上看到自己的跳绳姿态（发光「影子伙伴」）。
+        // 骨架在绘制阶段读取，每帧只重绘不重组；pulse 让每跳一下影子伙伴亮一下
+        PoseOverlay(skeleton = skeleton, pulse = pulse, modifier = Modifier.fillMaxSize())
 
-        // 上浮奖励层：每次计数冒出 ⭐✨💖 等奖励向上飘（在 HUD 之下，避免遮挡大数字）
-        FloatingRewards(count = count, modifier = Modifier.fillMaxSize())
-
-        // 积分弹幕飘屏（「+10」/ 连击 / 奖品解锁）：叠在最上层，给孩子即时喝彩
-        DanmakuOverlay(events = danmaku, onConsumed = vm::consumeDanmaku, modifier = Modifier.fillMaxSize())
+        // 上浮奖励层 / 积分弹幕：各自包一层子组件，内部 collect，避免计数变化重组整页
+        RewardLayer(vm = vm, modifier = Modifier.fillMaxSize())
+        DanmakuLayer(vm = vm, modifier = Modifier.fillMaxSize())
 
         // 姿态引擎初始化失败（多为混淆导致 native 调用失败 / 个别机型不支持）：提示但不崩溃，预览仍可用
         if (poseError != null) {
@@ -346,26 +406,27 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             }
         }
 
-        // 顶部：模式 + 计时，做成毛玻璃小药丸，浮在预览上更清爽
+        // 顶部：模式 + 计时 + 积分（毛玻璃小药丸）。抽成子组件，让「每秒/每跳」的变化只重组它自己
         Box(
             Modifier.fillMaxSize().padding(top = 16.dp, start = 16.dp, end = 16.dp),
             contentAlignment = Alignment.TopCenter
         ) {
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(999.dp))
-                    .background(Color.Black.copy(alpha = 0.32f))
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("🤳 照镜子模式", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 本次积分：每跳一下都在涨，给孩子「一直在赚」的即时感
-                    Text("⭐ $sessionPoints", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SunYellow)
-                    Text(formatDuration(elapsed), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                TopStatusPill(vm)
+                // 画面太暗时提示开灯：暗光下姿态识别会明显变差，提前告诉家长比事后数不准更好
+                if (dimLight) {
+                    Text(
+                        "💡 房间有点暗，开灯后跳跳星看得更准哦",
+                        fontSize = 13.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
                 }
             }
         }
@@ -379,104 +440,13 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 中间区域（占满剩余高度并居中）：检测到人→伙伴+计数；未检测到人→引导卡
+            // 中间区域（占满剩余高度并居中）：检测到人→训练 HUD；未检测到人→引导卡
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                if (hasPermission && modelPath != null && poseError == null && skeleton.value.isEmpty()) {
-                    // 引导卡：邀请小朋友站进画面，只用一个跳跳星，不再与下方 HUD 重复
-                    Card(
-                        Modifier.padding(8.dp),
-                        shape = RoundedCornerShape(28.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.45f))
-                    ) {
-                        Column(
-                            Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // 半透明：与页面其他 HUD 元素保持一致的轻盈感，不遮挡画面
-                            JumpMascot(MascotState.IDLE, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.alpha(0.5f))
-                            Text("👀 站进来一点～", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text(
-                                "让跳跳星看到你，\n一起开心地跳！",
-                                fontSize = 15.sp, color = Color.White.copy(alpha = 0.85f),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
+                if (hasPermission && modelPath != null && poseError == null && !hasPose) {
+                    GuideCard()
                 } else {
-                    // 训练中 HUD：节奏 + 吉祥物 + 计数 + 目标进度（儿童向、强反馈）
-                    // 节奏卡片置于跳跳星上方；间距 20dp（叠加节奏卡自身上移 10dp，实际间隙 30dp），
-                    // 保证跳跳星上弹 27dp 时顶部不会撞进节奏卡里被压住
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
-                    ) {
-                        // 节奏卡片：随当前节奏快慢轻轻跳动，帮孩子卡拍子；放在跳跳星上方。
-                        // 用半透明卡片承载，「节奏卡片」更聚焦；与下方跳跳星留出 12.dp 间距。
-                        val beat by rememberInfiniteTransition(label = "beat")
-                            .animateFloat(
-                                1f, 1.18f,
-                                infiniteRepeatable(
-                                    tween((if (cadence > 0) (60000 / cadence).coerceIn(220, 900) else 700)),
-                                    RepeatMode.Reverse
-                                ),
-                                label = "beat-a"
-                            )
-                        Card(
-                            // 整体上移 10.dp：节奏卡片在视觉上更贴近画面上沿，与下方跳跳星拉开层次
-                            modifier = Modifier.offset(y = (-10).dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.38f))
-                        ) {
-                            Row(
-                                Modifier.scale(beat).padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🔥", fontSize = 16.sp)
-                                Text("节奏 $cadence/分", fontSize = 15.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // 跳跳星半透明：与节奏卡/按钮的半透明风格统一，不挡镜头画面
-                        JumpMascot(mascot, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.alpha(0.5f))
-
-                        // 计数药丸：糖果渐变 + 柔光呼吸，每跳一下更醒目
-                        Box(contentAlignment = Alignment.Center) {
-                            val glowA by rememberInfiniteTransition(label = "count-glow")
-                                .animateFloat(0.45f, 0.85f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "count-glow-a")
-                            Box(
-                                Modifier.size(150.dp, 120.dp).alpha(glowA)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(SunYellow.copy(alpha = 0.9f), Color.Transparent),
-                                            radius = 240f
-                                        )
-                                    )
-                            )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                PopCount(count, fontSize = 72.sp, color = Color.White)
-                                Text("个", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
-                            }
-                        }
-
-                        // 连击提示：连跳一段时间才显示，让「连击加分」这件事被看见
-                        if (streak >= 5) {
-                            Text(
-                                "🔥 连击 x$streak",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SunYellow
-                            )
-                        }
-
-                        // 每日目标进度条：让小朋友看见离目标还有多远
-                        if (dailyGoal > 0) {
-                            GoalProgressBar(cur = count, goal = dailyGoal)
-                        }
-
-                        Text("和影子伙伴一起跳！", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
-                    }
+                    // HUD 内部自己 collect 高频 state，重组范围限制在组件内
+                    TrainingHud(vm = vm, pulse = pulse)
                 }
             }
             // 暂停时给一句安抚提示，让孩子知道「随时可以歇一下」
@@ -550,33 +520,263 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
     }
 }
 
-/**
- * 每日目标进度条：糖果渐变填充，让小朋友直观看到「还差多少个就达成今日目标」，
- * 给跳绳过程一个清晰的小目标，增强成就感与坚持欲。
- */
-@Composable
-private fun GoalProgressBar(cur: Int, goal: Int) {
-    val frac = (cur.toFloat() / goal).coerceIn(0f, 1f)
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text("🎯 今日目标 $cur / $goal", fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f))
-        Box(
-            Modifier.width(180.dp).height(12.dp).clip(RoundedCornerShape(6.dp))
-                .background(Color.White.copy(alpha = 0.28f))
-        ) {
-            Box(
-                Modifier.fillMaxWidth(frac).height(12.dp).clip(RoundedCornerShape(6.dp))
-                    .background(Brush.horizontalGradient(listOf(PinkSecondary, Mint)))
-            )
-        }
-    }
-}
-
 /** 按相机传感器旋转角度校正 Bitmap，保证输入 MediaPipe 的图像方向正确。 */
 private fun rotateBitmap(src: Bitmap, degrees: Int): Bitmap {
     if (degrees == 0) return src
     val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
     return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
 }
+
+// ============================ 页面子组件（性能：收窄重组范围） ============================
+
+/**
+ * 顶部状态药丸：模式 + 本次积分 + 计时。
+ *
+ * 为什么单独抽组件：积分每跳变、计时每秒变。若在页面作用域读这两个 state，
+ * 每次变化都会重组整页（含相机预览 AndroidView）→ 明显卡顿。
+ * 放到这里自己 collect，重组范围就只有这颗药丸。
+ */
+@Composable
+private fun TopStatusPill(vm: TrainingViewModel) {
+    val points by vm.sessionPoints.collectAsStateWithLifecycle()
+    val elapsed by vm.elapsed.collectAsStateWithLifecycle()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.Black.copy(alpha = 0.32f))
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("🤳 照镜子模式", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 本次积分：每跳一下都在涨，给孩子「一直在赚」的即时感
+            Text("⭐ $points", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SunYellow)
+            Text(formatDuration(elapsed), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
+}
+
+/** 节奏档位：把「个/分」翻译成孩子看得懂的反馈。 */
+private enum class Pace { NONE, SLOW, GOOD, FAST }
+
+private fun paceOf(cadence: Int): Pace = when {
+    cadence <= 0 -> Pace.NONE
+    cadence < 50 -> Pace.SLOW
+    cadence <= 150 -> Pace.GOOD
+    else -> Pace.FAST
+}
+
+/**
+ * 节奏带：显示当前节奏 + 一句「好不好」的评价（太慢/真棒/太快），
+ * 卡片还会跟着节奏轻轻跳动，帮孩子卡拍子。
+ */
+@Composable
+private fun PaceCard(cadence: Int) {
+    val pace = paceOf(cadence)
+    val hint = when (pace) {
+        Pace.NONE -> "⏳ 准备开始" to Color.White.copy(alpha = 0.75f)
+        Pace.SLOW -> "🐢 太慢啦，加油！" to SkyBlue
+        Pace.GOOD -> "🔥 节奏真棒！" to Mint
+        Pace.FAST -> "🐇 太快啦，慢一点" to SunYellow
+    }
+    // 跟着节奏快慢呼吸跳动（节奏越快跳得越快；没节奏时慢速呼吸）
+    val beat by rememberInfiniteTransition(label = "beat")
+        .animateFloat(
+            1f, 1.18f,
+            infiniteRepeatable(
+                tween((if (cadence > 0) (60000 / cadence).coerceIn(220, 900) else 700)),
+                RepeatMode.Reverse
+            ),
+            label = "beat-a"
+        )
+    Card(
+        modifier = Modifier.offset(y = (-10).dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.38f))
+    ) {
+        Row(
+            Modifier
+                .scale(beat)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("节奏 $cadence/分", fontSize = 15.sp, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold)
+            Text(hint.first, fontSize = 13.sp, color = hint.second, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/**
+ * 训练中 HUD：节奏带 + 跳跳星 + 大数字 + 连击 + 目标进度（含里程碑气泡）。
+ *
+ * count / cadence / streak 等高频 state 全在这里 collect，变化只重组本组件，不波及相机预览。
+ * [pulse] 用于每跳一下点亮影子伙伴（写入后由 PoseOverlay 在绘制阶段消费，不触发重组）。
+ */
+@Composable
+private fun TrainingHud(vm: TrainingViewModel, pulse: MutableState<Float>) {
+    val count by vm.count.collectAsStateWithLifecycle()
+    val cadence by vm.cadence.collectAsStateWithLifecycle()
+    val mascot by vm.mascot.collectAsStateWithLifecycle()
+    val streak by vm.streak.collectAsStateWithLifecycle()
+    val dailyGoal by vm.dailyGoal.collectAsStateWithLifecycle()
+
+    // 每跳一下给影子伙伴一个短脉冲：0.5 秒左右衰减回 0
+    LaunchedEffect(count) {
+        if (count > 0) {
+            pulse.value = 1f
+            while (pulse.value > 0f) {
+                delay(50)
+                pulse.value = (pulse.value - 0.1f).coerceAtLeast(0f)
+            }
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        PaceCard(cadence = cadence)
+
+        // 跳跳星半透明：与节奏卡/按钮的半透明风格统一，不挡镜头画面
+        JumpMascot(mascot, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.alpha(0.5f))
+
+        // 计数药丸：糖果渐变 + 柔光呼吸，每跳一下更醒目
+        Box(contentAlignment = Alignment.Center) {
+            val glowA by rememberInfiniteTransition(label = "count-glow")
+                .animateFloat(0.45f, 0.85f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "count-glow-a")
+            Box(
+                Modifier
+                    .size(150.dp, 120.dp)
+                    .alpha(glowA)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(SunYellow.copy(alpha = 0.9f), Color.Transparent),
+                            radius = 240f
+                        )
+                    )
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                PopCount(count, fontSize = 72.sp, color = Color.White)
+                Text("个", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
+            }
+        }
+
+        // 连击提示：连跳一段时间才显示，让「连击加分」这件事被看见
+        if (streak >= 5) {
+            Text("🔥 连击 x$streak", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SunYellow)
+        }
+
+        if (dailyGoal > 0) {
+            GoalProgressWithMilestone(cur = count, goal = dailyGoal)
+        }
+
+        Text("和影子伙伴一起跳！", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
+    }
+}
+
+/**
+ * 每日目标进度条 + 里程碑气泡：跨过 25/50/75/100% 时飘出一句鼓励，
+ * 把「长目标」切成四段小成就感，孩子更容易坚持。
+ */
+@Composable
+private fun GoalProgressWithMilestone(cur: Int, goal: Int) {
+    val frac = (cur.toFloat() / goal).coerceIn(0f, 1f)
+    var bubble by remember { mutableStateOf<String?>(null) }
+    var reached by remember { mutableStateOf(0) }
+    LaunchedEffect(cur) {
+        val stage = (frac * 4).toInt().coerceAtMost(4)
+        if (stage > reached) {
+            reached = stage
+            bubble = when (stage) {
+                1 -> "🎯 四分之一达成！"
+                2 -> "🎯 一半啦，真棒！"
+                3 -> "🎯 就快到啦，加油！"
+                else -> "🎉 今日目标达成！"
+            }
+            delay(2400)
+            bubble = null
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (bubble != null) {
+            val s by animateFloatAsState(if (bubble != null) 1f else 0.8f, tween(220), label = "milestone")
+            Text(
+                bubble!!,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = SunYellow,
+                modifier = Modifier.scale(s)
+            )
+        }
+        Text("🎯 今日目标 $cur / $goal", fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f))
+        Box(
+            Modifier
+                .width(180.dp)
+                .height(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.White.copy(alpha = 0.28f))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(frac)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Brush.horizontalGradient(listOf(PinkSecondary, Mint)))
+            )
+        }
+    }
+}
+
+/** 未检测到人时的引导卡：邀请小朋友站进画面。 */
+@Composable
+private fun GuideCard() {
+    Card(
+        Modifier.padding(8.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.45f))
+    ) {
+        Column(
+            Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            JumpMascot(MascotState.IDLE, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.alpha(0.5f))
+            Text("👀 站进来一点～", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                "让跳跳星看到你，\n一起开心地跳！",
+                fontSize = 15.sp, color = Color.White.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/** 上浮奖励层：内部自己 collect count，避免计数变化重组整页。 */
+@Composable
+private fun RewardLayer(vm: TrainingViewModel, modifier: Modifier = Modifier) {
+    val count by vm.count.collectAsStateWithLifecycle()
+    FloatingRewards(count = count, modifier = modifier)
+}
+
+/** 积分弹幕层：内部自己 collect 弹幕事件。 */
+@Composable
+private fun DanmakuLayer(vm: TrainingViewModel, modifier: Modifier = Modifier) {
+    val events by vm.danmaku.collectAsStateWithLifecycle()
+    DanmakuOverlay(events = events, onConsumed = vm::consumeDanmaku, modifier = modifier)
+}
+
+/** 分析帧最小间隔（ms）：约 15fps。跳绳 1~3 次/秒，精度足够，CPU 占用显著下降。 */
+private const val FRAME_INTERVAL_MS = 66L
+
+/** 平均亮度（0~255）低于此值判定为「画面太暗」。 */
+private const val BRIGHTNESS_DIM = 42
