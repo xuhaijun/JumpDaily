@@ -64,7 +64,6 @@ import com.jumpdaily.jump.data.model.Badge
 import com.jumpdaily.jump.data.model.BadgeCatalog
 import com.jumpdaily.jump.data.model.CountMode
 import com.jumpdaily.jump.ui.navigation.Screen
-import com.jumpdaily.jump.ui.theme.Bubble
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
@@ -72,6 +71,7 @@ import com.jumpdaily.jump.util.formatDuration
 import com.jumpdaily.jump.util.formatMonthDay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -96,6 +96,22 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
 
     // 最近训练记录（records 按 date DESC 排序，第一条即最近一次）→ 用于「上次成绩」摘要卡
     val recentRecords by records.records.collectAsStateWithLifecycle()
+
+    // 该孩子的总积分（按 childId 隔离存储）：放在首页数据卡，孩子跳完最想看的就是它
+    val childId = child?.id
+    val pointsFlow = remember(childId) {
+        childId?.let { container.prefsRepository.points(it) } ?: flowOf(0)
+    }
+    val points by pointsFlow.collectAsStateWithLifecycle(initialValue = 0)
+
+    /**
+     * 历史最长连跳：所有记录里 maxStreak 的最大值。
+     * 用它替代原先的「今日个数 / 连续天数 / 最佳单次」——那三项已由上方目标 Hero
+     * 与打卡卡完整表达，再摆一遍只是重复。
+     */
+    val bestStreak = remember(stats.history) {
+        stats.history.maxOfOrNull { it.maxStreak } ?: 0
+    }
 
     /**
      * 首次基线种子化：把「当前已解锁的成就」标记为已看，这样老用户（升级后已有历史成就）
@@ -201,97 +217,82 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            // 区块间距 16→14dp：与统计页/我的页统一，顺带给首屏再挤出 10dp 左右
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 顶部问候 + 切换孩子
+            // 顶部问候 + 切换孩子（紧凑版）：首屏高度很贵，头像 60→46dp、问候 22→20sp，
+            // 把省下的空间让给「今日目标 Hero + 开始跳绳」这一核心动作区
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                ChildAvatar(child = child, size = 60.dp)
+                ChildAvatar(child = child, size = 46.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         "${greetingNow()}，${child?.name ?: "宝贝"}！",
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    // 标题行与副标题行保持一点间距，避免挤在一起
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${weekdayNow()} · 今天也要元气满满哦 🌈",
-                            fontSize = 13.sp,
-                            color = InkSoft,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "${weekdayNow()} · 今天也要元气满满哦 🌈",
+                        fontSize = 12.sp,
+                        color = InkSoft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 TextButton(onClick = { nav.navigate(Screen.Children.route) }) {
-                    Text("切换 ↩", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("切换 ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // 吉祥物 + 气泡
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Bubble).padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    JumpMascot(
-                        mascotState,
-                        // 关闭默认涟漪（点击时的水波纹/阴影）：吉祥物本身会蹦跳 + 喊话，
-                        // 已经是最直观的反馈，再叠加一层波纹反而显得脏
-                        modifier = Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { pokeMascot() }
-                    )
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Text(
-                            bubble ?: "今天也来跳一跳吧！\n我陪你一起数 💛",
-                            Modifier.padding(14.dp),
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-
-            // 本周打卡日历（连续打卡可视化）：紧贴跳跳星卡片下方（2026-09-04 用户调整），
-            // 「打卡情况」和「吉祥物鼓励」同属情感激励区，放一起；具体数据卡片依次排后
-            WeeklyCheckIn(weekly = weekly, streak = stats.streak)
-
-            // 今日目标：以每日目标（默认 600 个）为准，最佳纪录作为突破参考，可点「调整目标」改数值
-            DailyGoalCard(
+            // Hero：今日目标 + 大数字 + 进度条 + 跳跳星同框。
+            // 2026-09-07 布局重构：原先「吉祥物气泡卡」单独占 182dp（首屏 27%），目标卡另占 150dp+，
+            // 两者合并成一张 Hero 后省下约 150dp，吉祥物缩小为卡内装饰（戳一下照样蹦跳 + 喊话）
+            DailyGoalHero(
                 todayCount = stats.todayCount,
                 bestCount = stats.bestCount,
                 dailyGoal = dailyGoal,
+                mascotState = mascotState,
+                bubble = bubble,
+                onPokeMascot = ::pokeMascot,
                 onAdjust = { nav.navigate(Screen.Settings.route) }
             )
 
-            // 今日数据（点击卡片有可爱反馈）
+            // 开始跳绳：紧跟 Hero，首屏 0 滚动即可开跳。
+            // （原先排在卡片流最末尾，360×780 机型需下滑约 200dp 才能点到）
+            // 达标彩蛋：今天目标已达成时换庆祝文案，鼓励孩子「再来一波」
+            val goalReached = stats.todayCount > 0 && stats.todayCount >= dailyGoal.coerceAtLeast(600)
+            CuteButton(
+                if (goalReached) "已达标！再挑战一波 🎉" else "开始跳绳 🏃",
+                onClick = { nav.navigate(if (countMode == CountMode.CAMERA) Screen.CameraTraining.route else Screen.Training.route) },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 本周打卡日历（连续打卡可视化）：情感激励区，排在核心动作之后，仍落在首屏可见范围内
+            WeeklyCheckIn(weekly = weekly, streak = stats.streak)
+
+            // 数据三卡：刻意避开 Hero 已表达的「今日个数 / 连续天数 / 最佳单次」，
+            // 换成三项不重复的信息（最长连跳 / 打卡天数 / 我的积分），点击仍有音效 + 气泡 + 朗读
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(
-                    "⭐", "${stats.todayCount}", "今日个数", Modifier.weight(1f),
+                    "🔥", "$bestStreak", "最长连跳", Modifier.weight(1f),
                     onClick = {
-                        poke("哇塞！今天已经跳了 ${stats.todayCount} 个啦，你是跳绳小超人！⚡") { sound.reward() }
+                        poke("一口气连跳 $bestStreak 个，太稳啦！🔥") { sound.cheer() }
                     }
                 )
                 StatCard(
-                    "🔥", "${stats.streak}", "连续天数", Modifier.weight(1f),
+                    "📅", "${stats.activeDays}", "打卡天数", Modifier.weight(1f),
                     onClick = {
-                        poke("连续 ${stats.streak} 天没偷懒，坚持下去你就是最棒的！🔥") { sound.cheer() }
+                        poke("已经打卡 ${stats.activeDays} 天啦，好习惯正在长出来 🌱") { sound.reward() }
                     }
                 )
                 StatCard(
-                    "🏆", "${stats.bestCount}", "最佳单次", Modifier.weight(1f),
+                    "⭐", "$points", "我的积分", Modifier.weight(1f),
                     onClick = {
-                        poke("单次最高 ${stats.bestCount} 个！要不要挑战新纪录呀？🏆") { sound.star() }
+                        poke("你已经攒了 $points 分，可以去我的页换奖品啦 🎁") { sound.star() }
                     }
                 )
             }
@@ -328,14 +329,6 @@ fun HomeScreen(nav: NavHostController, session: SessionViewModel, records: Recor
                 }
             }
 
-            // 开始跳绳：大按钮保持在卡片流末尾，进入训练页顺手
-            // 达标彩蛋：今天目标已达成时换庆祝文案，鼓励孩子「再来一波」
-            val goalReached = stats.todayCount > 0 && stats.todayCount >= dailyGoal.coerceAtLeast(600)
-            CuteButton(
-                if (goalReached) "已达标！再挑战一波 🎉" else "开始跳绳 🏃",
-                onClick = { nav.navigate(if (countMode == CountMode.CAMERA) Screen.CameraTraining.route else Screen.Training.route) },
-                modifier = Modifier.fillMaxWidth()
-            )
         }
 
         // 新成就解锁全屏庆祝（仅弹一次）
@@ -434,9 +427,28 @@ private fun WeeklyCheckIn(weekly: List<Pair<String, Int>>, streak: Int) {
     }
 }
 
-/** 今日目标：以「每日目标」（默认 600 个）为准，最佳纪录仅作突破参考；右上角可跳转设置调整目标。 */
+/**
+ * 今日目标 Hero（2026-09-07 重构）：把「目标进度 + 今日个数 + 吉祥物」合并成一张首屏主卡。
+ *
+ * 布局顺序遵循「孩子最想先看什么」：
+ * 1. 标题行：今日目标 + 三颗星进度 + 还差多少个；
+ * 2. 主区：超大今日个数（一眼看到成果），右侧跳跳星当装饰（戳一下会蹦跳 + 喊话）；
+ * 3. 进度条；
+ * 4. 底部行：默认显示达标引导，戳吉祥物/数据卡时临时显示气泡文案，右侧是「调整目标」。
+ *
+ * @param mascotState 吉祥物状态（首页统一驱动：戳卡片/吉祥物都会让它欢呼）
+ * @param bubble 临时气泡文案，为 null 时底部行显示默认引导语
+ */
 @Composable
-private fun DailyGoalCard(todayCount: Int, bestCount: Int, dailyGoal: Int, onAdjust: () -> Unit) {
+private fun DailyGoalHero(
+    todayCount: Int,
+    bestCount: Int,
+    dailyGoal: Int,
+    mascotState: MascotState,
+    bubble: String?,
+    onPokeMascot: () -> Unit,
+    onAdjust: () -> Unit
+) {
     // 目标值兜底：DataStore 首帧未到达时 dailyGoal 可能为 0，这里保证进度条不崩且不为 0 目标
     val target = dailyGoal.coerceAtLeast(600)
     val reached = todayCount >= target
@@ -450,32 +462,71 @@ private fun DailyGoalCard(todayCount: Int, bestCount: Int, dailyGoal: Int, onAdj
 
     Card(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 标题行：目标 + 星级 + 差额（星级用 13sp，比原 18sp 更省高度）
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "🎯 今日目标", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    "🎯 今日目标", fontSize = 15.sp, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    "$target 个", fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                repeat(3) { i ->
+                    Text("⭐", fontSize = 13.sp, modifier = Modifier.alpha(if (i < stars) 1f else 0.3f))
+                }
                 Spacer(Modifier.weight(1f))
                 Text(
                     if (reached) "已达成 🏆" else "还差 ${target - todayCount} 个",
-                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
-            Text(
-                if (bestCount > 0) "今天跳满 $target 个就达标啦！最佳纪录 $bestCount 个，继续挑战 💪"
-                else "今天跳满 $target 个就达标啦，迈出第一步吧 💪",
-                fontSize = 13.sp, color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+
+            // 主区：左「今日大数字」，右「跳跳星装饰」
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "$todayCount",
+                            fontSize = 38.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "/ $target 个",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        if (bestCount > 0) "最佳纪录 $bestCount 个" else "迈出第一步吧 💪",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                // 跳跳星：Hero 内的情感锚点，戳一下蹦跳 + 喊话（喊话显示在下方气泡行）
+                JumpMascot(
+                    state = mascotState,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    mascotSize = 78.dp,
+                    // 关闭默认涟漪：吉祥物本身会蹦跳，再叠一层波纹反而显得脏
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onPokeMascot() }
+                )
+            }
+
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(6.dp)),
@@ -483,16 +534,28 @@ private fun DailyGoalCard(todayCount: Int, bestCount: Int, dailyGoal: Int, onAdj
                 color = if (reached) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                repeat(3) { i ->
-                    Text("⭐", fontSize = 18.sp, modifier = Modifier.alpha(if (i < stars) 1f else 0.3f))
-                }
-                Spacer(Modifier.width(8.dp))
-                Text("$todayCount / $target", fontSize = 13.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onAdjust) {
-                    Text("调整目标", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
+
+            // 底部行：气泡（戳吉祥物/数据卡时）与默认引导复用同一行，避免额外占高度
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    bubble ?: if (bestCount > 0) "今天跳满 $target 个就达标啦，继续挑战 💪"
+                    else "今天跳满 $target 个就达标啦，加油 💪",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "调整目标 ›",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable { onAdjust() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
         }
     }

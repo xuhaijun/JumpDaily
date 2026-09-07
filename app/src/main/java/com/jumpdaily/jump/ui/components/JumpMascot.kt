@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jumpdaily.jump.ui.theme.Ink
 import com.jumpdaily.jump.ui.theme.PinkSecondary
@@ -31,7 +32,15 @@ enum class MascotState { IDLE, JUMPING, HAPPY, SAD, CHEER }
 fun JumpMascot(
     state: MascotState,
     modifier: Modifier = Modifier,
-    color: Color = PurplePrimary
+    color: Color = PurplePrimary,
+    /**
+     * 绘制尺寸，默认 150dp。首页等空间紧张的场景可传小值（如 78dp）当装饰，
+     * 弹跳/待机浮动的偏移量会按同比例缩放，动作幅度与体型保持协调。
+     *
+     * 注意：不能命名为 `size`——会遮蔽 Canvas 绘制作用域里的 `DrawScope.size`（Size 类型），
+     * 导致 `size.minDimension` 等绘制代码解析失败。
+     */
+    mascotSize: Dp = 150.dp
 ) {
     val bounce by animateFloatAsState(
         targetValue = when (state) {
@@ -57,7 +66,9 @@ fun JumpMascot(
         label = "mascot-idle-bob"
     )
 
-    Canvas(modifier.size(150.dp).offset(y = (bounce + idleBob).dp)) {
+    // 动作幅度随体型等比缩放：小号吉祥物不会「跳得上天」，与整体视觉协调
+    val bobScale = mascotSize.value / 150f
+    Canvas(modifier.size(mascotSize).offset(y = ((bounce + idleBob) * bobScale).dp)) {
         val c = center
         val r = size.minDimension / 2.2f
 
