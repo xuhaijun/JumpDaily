@@ -136,12 +136,12 @@ fun AppRoot(container: AppContainer) {
 
             // 浮条可见性：
             // - 挂起会话（paused=true）：四 tab 常驻，胶囊显示「已跳 X 个 · 时长 | 继续」
-            // - 无会话（!running && !paused）：仅首页显示「开始跳绳」入口胶囊
+            // - 无会话（!running && !paused）：首页已有醒目「开始跳绳」按钮（重构后首屏可见），
+            //   不再重复显示浮条；浮条仅在有挂起会话时作为跨页续跳入口
             // - 训练页 / 二级页（设置等）/ 启动页不显示
             val sessionActive = tRunning || tPaused
             val barMode = when {
                 tPaused && showBottomBar -> Mode.SUSPENDED
-                !sessionActive && currentRoute == Screen.Home.route -> Mode.IDLE
                 else -> null
             }
 
