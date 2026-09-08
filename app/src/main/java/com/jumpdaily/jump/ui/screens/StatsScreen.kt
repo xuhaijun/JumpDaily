@@ -53,15 +53,16 @@ import androidx.navigation.NavHostController
 import com.jumpdaily.jump.audio.SoundPlayer
 import com.jumpdaily.jump.data.local.entities.JumpRecord
 import com.jumpdaily.jump.data.model.CountMode
-import com.jumpdaily.jump.ui.components.ChildAvatar
 import com.jumpdaily.jump.ui.components.CuteButton
 import com.jumpdaily.jump.ui.components.FunBanner
 import com.jumpdaily.jump.ui.components.JumpMascot
 import com.jumpdaily.jump.ui.components.MascotState
+import com.jumpdaily.jump.ui.components.PageHeader
 import com.jumpdaily.jump.ui.components.StatCard
 import com.jumpdaily.jump.ui.components.WeeklyBarChart
 import com.jumpdaily.jump.ui.navigation.Screen
 import com.jumpdaily.jump.ui.theme.Bubble
+import com.jumpdaily.jump.ui.theme.Dimens
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
@@ -91,34 +92,30 @@ fun StatsScreen(
     val weeklyGoal by session.weeklyGoal.collectAsStateWithLifecycle()
     val child by session.currentChild.collectAsStateWithLifecycle()
 
-    Column(
+        Column(
         Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(Dimens.screenPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.itemGap)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ChildAvatar(child = child, size = 48.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(
-                "${child?.name ?: "宝贝"} 的运动记录",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f)
-            )
-            // 连续打卡小徽章：一进页面就能看到坚持天数
-            Text(
-                "🔥 连续 ${stats.streak} 天",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
+        // 统一页头：头像 + 标题 + 右侧连续打卡徽章
+        PageHeader(
+            child = child,
+            title = "${child?.name ?: "宝贝"} 的运动记录",
+            trailing = {
+                // 连续打卡小徽章：一进页面就能看到坚持天数
+                Text(
+                    "🔥 连续 ${stats.streak} 天",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+        )
 
         // 内部 tab 栏：运动报告 / 历史记录
         StatsInnerTabs(selected = tab, onSelect = { tab = it })
@@ -190,22 +187,14 @@ private fun SportsReport(
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // 顶部临时鼓励横幅：点击卡片时弹出，带彩带的花哨样式，缩放淡入淡出
-        AnimatedVisibility(
-            visible = feedback != null,
-            enter = fadeIn() + scaleIn(initialScale = 0.85f),
-            exit = fadeOut() + scaleOut(targetScale = 0.85f)
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            feedback?.let { (txt, em) -> FunBanner(txt, em) }
-        }
-
-        Card(
+            Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Bubble)
@@ -306,6 +295,16 @@ private fun SportsReport(
         }
 
         Text("小提示：每天坚持跳一跳，连续打卡会有惊喜成就哦 🌟", fontSize = 13.sp, color = InkSoft)
+        }
+        // 鼓励横幅改为顶部浮层：不占滚动流位置，弹出/消失不再推挤下方内容
+        AnimatedVisibility(
+            visible = feedback != null,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f)
+        ) {
+            feedback?.let { (txt, em) -> FunBanner(txt, em) }
+        }
     }
 }
 

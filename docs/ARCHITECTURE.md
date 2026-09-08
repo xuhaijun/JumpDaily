@@ -23,6 +23,7 @@
   - [5.3 主题切换（浅色 / 夜间）](#53-主题切换浅色--夜间)
   - [5.4 每日提醒](#54-每日提醒)
   - [5.5 应用启动与种子数据](#55-应用启动与种子数据)
+  - [5.6 训练中返回：挂起 / 清零](#56-训练中返回挂起--清零)
 - [6. 数据模型](#6-数据模型)
 - [7. 设计原则与关键决策](#7-设计原则与关键决策)
 - [8. 工程与构建配置](#8-工程与构建配置)
@@ -271,6 +272,23 @@ MainActivity.setContent { AppRoot }
   → SplashScreen 短暂展示后跳 Home
 ```
 
+### 5.6 训练中返回：挂起 / 清零（退出保护）
+
+`CameraTrainingScreen` 用 `BackHandler` 拦截系统返回，仅在「`running || paused` 且 `count > 0` 且未出结果页」时触发：
+
+```
+onBack -> if (running||paused && count>0 && result==null) {
+    vm.pause()                       // 先停计时与分析
+    showExitDialog()                 // 三选框：继续 / 挂起 / 清零
+}
+```
+
+- **继续**：留在当前页，`vm.resume(childId)` 恢复训练（重新绑定当前孩子、恢复计时）。
+- **挂起**：复用 §5.2 的挂起快照机制，浮条显示「⏸ 已跳 X 个 · 时长」。下次进入训练页按 `sessionMode` 回对应训练页续跳。
+- **清零**：`vm.discard()` 清空内存会话与挂起快照（**不落库、不攒积分**），首页浮条因 `tCount > 0` 守卫不再显示。
+- `AppRoot` 浮条可见性新增 `tCount > 0` 条件，确保清零后不会残留挂起浮条。
+```
+
 ---
 
 ## 6. 数据模型
@@ -347,6 +365,21 @@ erDiagram
 | 包的排除 | `META-INF/{AL2.0,LGPL2.1}`（MediaPipe 许可文件冲突） |
 
 > 依赖源：本机使用阿里云镜像 `maven.aliyun.com/repository/google` 拉取 `com.google.mediapipe:tasks-vision`，仓库未配置 `google()` 源。
+
+### 多渠道打包（flavor）
+`app/build.gradle.kts` 以 `flavorDimensions("channel")` 区分发布渠道，当前三渠道：
+
+| flavor | 含义 | 产物目录 |
+|--------|------|----------|
+| `official` | 官方通用包（默认兜底） | `apk/official/...` |
+| `huawei` | 华为应用市场 | `apk/huawei/...` |
+| `xiaomi` | 小米商店 | `apk/xiaomi/...` |
+
+每个 flavor 组合 `debug`/`release` 共 6 个变体；渠道号经 `manifestPlaceholders["CHANNEL_VALUE"]` 注入 `AndroidManifest.xml` 的 `<meta-data android:name="CHANNEL">`，运行时读 `packageManager.getApplicationInfo(...).metaData.getString("CHANNEL")` 或 `BuildConfig.FLAVOR`。新增渠道只需在 `productFlavors` 照抄 `create("渠道名")` 块，无需改 Manifest。
+
+### 安装包命名与一键打包
+- 命名：`applicationVariants.all` 把产物重命名为 `JumpDaily_v<版本>_<渠道>_<类型>_<日期>.apk`（如 `JumpDaily_v1.0.0_huawei_release_20260907.apk`）。
+- 一键脚本：`tools/build_apk.bat`（Windows）与 `tools/build_apk.sh`（Git Bash / Linux / macOS），参数 `[all|official|huawei|xiaomi] [release|debug] [install]`，自动定位 `JAVA_HOME`/`ANDROID_HOME` → 构建 → 归档 `dist\<日期>\` → 列清单；带 `install` 末尾自动 `adb install`。脚本头部写死 JDK/SDK 路径，换机改一处即可。
 
 ---
 

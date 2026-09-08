@@ -533,6 +533,35 @@
 
 ---
 
+## [2026-09-07] 训练退出保护 + 缓存清理确认 + 多渠道打包 + 一键脚本
+
+### 摄像头训练页「退出保护」（新交互）
+- 训练中（`running`/`paused` 且 `count>0` 且未出结果页）点返回键不再直接退出：`CameraTrainingScreen` 用 `BackHandler` 先 `pause()` 再弹三选框——
+  - **继续**：留在当前页恢复训练；
+  - **挂起**：自动暂停并挂起会话（浮条显示「⏸ 已跳 X 个」，下次进训练页可续跳，逻辑复用既有挂起快照）；
+  - **清零**：调 `TrainingViewModel.discard()` 清空内存会话与挂起快照（不落库、不攒积分），首页浮条因 `tCount>0` 守卫不再显示。
+- `AppRoot` 浮条可见性新增 `tCount > 0` 条件，避免清零后残留浮条。
+
+### 清理缓存（确认 + 空态友好）
+- `ProfileScreen`「清除缓存」改为先弹确认框（显示将释放的缓存大小）；`cacheBytes==0` 时改弹「缓存很干净 ✨」友好提示，不再出现「将删除 0 B」的违和文案。
+- 箭头图标 `Icons.Filled.KeyboardArrowRight` → `Icons.AutoMirrored.Filled.KeyboardArrowRight`（RTL 兼容）。
+
+### 多渠道打包（新功能）
+- `app/build.gradle.kts` 新增 `flavorDimensions("channel")` + 三个 productFlavor：`official`（官方通用）/ `huawei`（华为应用市场）/ `xiaomi`（小米商店），各组合 debug/release 共 6 个变体。
+- `AndroidManifest.xml` 注入 `<meta-data android:name="CHANNEL" android:value="${CHANNEL_VALUE}" />`；`defaultConfig` 兜底 `official`。运行时读取：`packageManager.getApplicationInfo(...).metaData.getString("CHANNEL")` 或 `BuildConfig.FLAVOR`。
+- 新增渠道：在 `productFlavors` 照抄 `create("渠道名")` 块即可，无需改 Manifest。
+
+### 安装包自动命名 + 一键打包脚本
+- `app/build.gradle.kts` `applicationVariants.all` 重命名产物：`JumpDaily_v<版本>_<渠道>_<类型>_<日期>.apk`（例 `JumpDaily_v1.0.0_huawei_release_20260907.apk`）。
+- 新增 `tools/build_apk.bat`（Windows cmd/双击）与 `tools/build_apk.sh`（Git Bash / Linux / macOS）：参数 `[all|official|huawei|xiaomi] [release|debug] [install]`，自动设 `JAVA_HOME`/`ANDROID_HOME` → Gradle 构建 → 归档 `dist\<日期>\` → 列清单；`install` 末尾自动 `adb install`。
+- `.gitignore` 加 `dist/`；README「📦 发布签名」章补充多渠道与一键脚本完整用法。
+
+### 工程清理 / 修复
+- `tools/` 删除与打包无关的调试临时文件；项目根目录清理调试残留（`_d.log`/`_gv.txt`/根 `build/`），零风险（均已被 `.gitignore` 忽略）。
+- PageHeader 统一收尾：修复并行编辑竞态导致的错误 import（`BoxScope.align` 免导入）、补齐 `PageHeader`/`Dimens` 导入、清理 `AchievementsScreen` 未用 `nav` 参数；达成 Kotlin 编译 0 警告、单测通过、debug/release 双构建通过、模拟器验收通过。
+
+---
+
 ## 历史基线
 
 - 应用主体（多孩子档案、传感器计数、统计/历史/成就、目标+达成庆祝、夜间模式、卡哇伊 UI）与上一轮迭代的功能详见 [README.md](README.md)。

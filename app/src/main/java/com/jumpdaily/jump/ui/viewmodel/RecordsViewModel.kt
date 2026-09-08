@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.stateIn
 /**
  * 统计 / 历史 / 成就三页共享：根据当前孩子派生记录、统计、成就与周柱状图数据。
  */
+// flatMapLatest 属 ExperimentalCoroutinesApi；在类级统一 OptIn，避免每个属性重复标注
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class RecordsViewModel(private val repo: JumpRepository) : ViewModel() {
 
     private val _childId = MutableStateFlow<Long?>(null)

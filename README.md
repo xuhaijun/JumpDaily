@@ -27,6 +27,8 @@
 - **跳绳目标 + 达成庆祝**：设置里可设**每日 / 每周目标**；首页与统计页用进度条实时展示距离目标的差距；训练结束时若本次**首次跨过当日目标线**，结果页弹出「🏆 达成今日目标」专属庆祝并播放奖励音效。
 - **夜间模式**：设置内一键切换「深空紫蓝」护眼主题，持久化保存、重启保留，孩子晚上跳也不刺眼。
 - **卡哇伊 UI + Lottie 动效**：糖果色 / 夜间双主题 Material3、Canvas 手绘吉祥物「跳跳星」、emoji 头像；训练达标用 Lottie 彩带庆祝动画，启动页用 Lottie 旋转星星，几乎无需图片素材。
+- **训练中退出保护**：跳了一些后点返回会弹三选框——继续（留在当前页）/ 挂起（自动暂停，浮条显示「已跳 X 个」下次可续跳）/ 清零（丢弃本次、不落库不攒分、首页不显浮条）。
+- **缓存清理确认**：点「清除缓存」先弹确认框并显示将释放大小；无缓存时给「缓存很干净 ✨」友好提示，不再出现「将删除 0 B」。
 
 ## 🧱 技术栈
 
@@ -94,6 +96,32 @@ app/src/main/java/com/jumpdaily/jump/
 
 ## 📦 发布签名（Release）
 
+### 一键打包（推荐）
+
+双击或命令行运行 `tools\build_apk.bat`（Windows）/ `tools/build_apk.sh`（Git Bash / Linux / macOS），自动完成「构建 → 按日期归档 → 列清单」：
+
+```bat
+:: Windows（cmd / 双击）
+tools\build_apk.bat                          :: 全渠道 release → dist\<今天>\
+tools\build_apk.bat huawei                   :: 只打华为渠道 release
+tools\build_apk.bat xiaomi debug             :: 小米渠道 debug
+tools\build_apk.bat official release install :: 构建后自动 adb install 到连接的设备
+```
+
+```bash
+# Git Bash / Linux / macOS（参数与 bat 版完全一致）
+./tools/build_apk.sh                          # 全渠道 release
+./tools/build_apk.sh huawei                   # 华为渠道 release
+./tools/build_apk.sh xiaomi debug             # 小米渠道 debug
+./tools/build_apk.sh official release install # 构建后 adb install
+```
+
+- 产物 APK 自带版本号/渠道/类型/日期：`JumpDaily_v1.0.0_huawei_release_20260907.apk`
+- 归档目录 `dist\<日期>\`（已被 .gitignore 忽略）
+- 脚本头部写死 `JAVA_HOME` / `ANDROID_HOME`，换开发机只需改那里
+
+### 手动构建
+
 `app/build.gradle.kts` 已配置 `signingConfigs.release`，签名信息从项目根 `local.properties` 读取（该文件已被 `.gitignore` 忽略，**不会提交到仓库**，避免密钥泄露）。仅当 `local.properties` 配置了密钥时 `assembleRelease` 才会真正签名；未配置则跳过，不影响 `assembleDebug`。
 
 1. **生成签名密钥库**（仅一次）：在终端执行
@@ -115,12 +143,25 @@ app/src/main/java/com/jumpdaily/jump/
    ```bash
    # 先停掉可能残留的旧 Gradle daemon，避免缓存/版本错乱
    ./gradlew --stop
-   # 已签名 APK → app/build/outputs/apk/release/app-release.apk
+   # 多渠道 release（一次产出 official / huawei / xiaomi 三个渠道包）
+   # 产物按渠道分目录：app/build/outputs/apk/<渠道>/release/app-<渠道>-release.apk
    ./gradlew assembleRelease
-   # 已签名 AAB → app/build/outputs/bundle/release/app-release.aab（上架 Play 商店用）
+   # 只构建单个渠道：assemble<渠道名首字母大写><Debug|Release>，如
+   ./gradlew assembleHuaweiRelease    # → apk/huawei/release/app-huawei-release.apk
+   ./gradlew assembleOfficialDebug    # → apk/official/debug/app-official-debug.apk
+   # 已签名 AAB（上架 Google Play 用，同样按渠道分目录）
    ./gradlew bundleRelease
    ```
-   - 若想走 **Android Studio 图形界面**：菜单 **Build → Generate Signed Bundle / APK** → 选 **Android App Bundle** 或 **APK** → 填入上面密钥库路径/密码/alias → 选 release → 完成，产物路径同上。
+
+   **多渠道说明（2026-09-07）**：`channel` 维度含 `official`（官方通用）/ `huawei`（华为应用市场）/ `xiaomi`（小米商店）三个 flavor，每个渠道组合 debug/release 共 6 个变体。渠道号已注入 Manifest 的 `<meta-data android:name="CHANNEL">`，运行时读取方式：
+   ```kotlin
+   val channel = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+       .metaData.getString("CHANNEL")   // "official" / "huawei" / "xiaomi"
+   // 或直接读 flavor 名：BuildConfig.FLAVOR
+   ```
+   新增渠道：在 `app/build.gradle.kts` 的 `productFlavors` 里照抄一个 `create("渠道名")` 块即可，无需改 Manifest。
+
+   - 若想走 **Android Studio 图形界面**：菜单 **Build → Generate Signed Bundle / APK** → 选 **Android App Bundle** 或 **APK** → 填入上面密钥库路径/密码/alias → 选 release（按 flavor 勾选渠道）→ 完成。
    - 构建失败报「找不到密钥/密码错误」→ 回头核对 `local.properties` 四项拼写与 `app/jumpdaily-release.keystore` 是否就位。
 
 4. **校验产物已签名**（可选但推荐）：

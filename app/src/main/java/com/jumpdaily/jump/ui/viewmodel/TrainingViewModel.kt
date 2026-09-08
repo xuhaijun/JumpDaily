@@ -137,7 +137,7 @@ class TrainingViewModel(
         sensorManager,
         object : JumpListener {
             override fun onJump() { this@TrainingViewModel.onJump() }
-            override fun onCadence(c: Int) { this@TrainingViewModel.onCadence(c) }
+            override fun onCadence(cadence: Int) { this@TrainingViewModel.onCadence(cadence) }
             override fun onFormIssue() { this@TrainingViewModel.onFormIssue() }
         },
         1.0f
@@ -274,6 +274,41 @@ class TrainingViewModel(
     }
 
     /**
+     * 丢弃当前会话（2026-09-07 摄像头页返回弹框选「清零退出」时调用）：
+     * 与 [stop] 的区别是**不落库、不攒积分**——这次的成绩整体作废；
+     * 同时清掉内存状态与 pause() 落盘的挂起快照，避免下次启动又弹「继续/放弃」恢复框。
+     * 清完后 sessionActive=false，浮条（含首页入口态）不再显示。
+     */
+    fun discard() {
+        detector.stop()
+        ticker?.cancel()
+        pointsJob?.cancel()
+        flushJob?.cancel()
+        viewModelScope.launch { prefs.clearSuspendedSession() }
+        _running.value = false
+        _paused.value = false
+        _sessionMode.value = null
+        childId = null
+        _count.value = 0
+        _elapsed.value = 0
+        _cadence.value = 0
+        _streak.value = 0
+        _sessionPoints.value = 0
+        _danmaku.value = emptyList()
+        _result.value = null
+        _confetti.value = false
+        _feedback.value = null
+        _goalReached.value = false
+        currentStreak = 0
+        maxStreak = 0
+        lastJumpTs = 0
+        lastFeedbackTs = 0
+        goalCelebrated = false
+        comboAwarded.clear()
+        pendingPoints = 0
+    }
+
+    /**
      * 跨进程恢复挂起会话（2026-09-04）：冷启动后用户在弹框选「继续」时调用。
      * 只还原状态不启动传感器/计时（保持挂起态），浮条显示上次的个数与时长，
      * 点浮条回到对应计数方式页后再 resume() 接着跳。
@@ -292,6 +327,8 @@ class TrainingViewModel(
     /** 继续：恢复传感器与计时（计时在暂停期间不累加，恢复后接着算）。 */
     fun resume(childId: Long) {
         if (_paused.value) {
+            // 重新绑定当前孩子：防御「挂起期间切换了孩子档案」导致成绩记错人
+            this.childId = childId
             detector.setSensitivity(_sensitivity.value)
             _running.value = true
             _paused.value = false

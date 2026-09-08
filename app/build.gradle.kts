@@ -1,3 +1,5 @@
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
 
 plugins {
@@ -20,6 +22,34 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 仅保留中文资源，剔除依赖库里的其它语言字符串，显著减小包体积
         resourceConfigurations += setOf("zh", "zh-rCN", "zh-rTW")
+        // 渠道号默认值：命令行未指定 flavor 时（如直接 assembleDebug）兜底为 official，
+        // 保证 Manifest 里 ${CHANNEL_VALUE} 占位符始终能解析
+        manifestPlaceholders["CHANNEL_VALUE"] = "official"
+    }
+
+    // ===== 多渠道打包（2026-09-07）=====
+    // 维度只有 channel 一个；每个渠道生成独立的 debug/release 变体（共 3×2=6 个组合）。
+    // 渠道号通过 Manifest 占位符注入 <meta-data android:name="CHANNEL">，
+    // 运行时读取：packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+    //            .metaData.getString("CHANNEL")；也读 BuildConfig.FLAVOR（= flavor 名）。
+    // 目前应用无统计 SDK，渠道号先注入占位，接入统计后可直接上报。
+    flavorDimensions += "channel"
+    productFlavors {
+        create("official") {
+            dimension = "channel"
+            manifestPlaceholders["CHANNEL_VALUE"] = "official"
+            // 官方通用包：无任何商店专属定制
+        }
+        create("huawei") {
+            dimension = "channel"
+            manifestPlaceholders["CHANNEL_VALUE"] = "huawei"
+            // 华为应用市场包：后续可在此加 HMS 专属依赖/配置（resValue 差异化应用名等）
+        }
+        create("xiaomi") {
+            dimension = "channel"
+            manifestPlaceholders["CHANNEL_VALUE"] = "xiaomi"
+            // 小米应用商店包：后续可加小米推送等商店专属能力
+        }
     }
 
     signingConfigs {
@@ -61,6 +91,22 @@ android {
             // 仅当 local.properties 配置了密钥时才应用签名（未配置则产出未签名包，不影响构建验证）
             val rel = signingConfigs.getByName("release")
             if (rel.storeFile != null) signingConfig = rel
+        }
+    }
+
+    // ===== 产物命名（2026-09-07）=====
+    // APK 文件名自动带上版本号 / 渠道 / 构建类型 / 日期，如：
+    //   JumpDaily_v1.0.0_huawei_release_20260907.apk
+    // 注意：日期只精确到「天」——同一天内文件名稳定，不破坏 Gradle 增量构建；
+    // 若加时分秒，每次构建文件名都变，up-to-date 检查会永远失效。
+    applicationVariants.all {
+        val vName = versionName
+        val flavor = flavorName
+        val type = buildType.name
+        val date = SimpleDateFormat("yyyyMMdd").format(Date())
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            output.outputFileName = "JumpDaily_v${vName}_${flavor}_${type}_$date.apk"
         }
     }
 

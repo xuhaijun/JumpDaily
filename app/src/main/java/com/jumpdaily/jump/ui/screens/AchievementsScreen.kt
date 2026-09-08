@@ -55,8 +55,9 @@ import androidx.navigation.NavHostController
 import com.jumpdaily.jump.audio.SoundPlayer
 import com.jumpdaily.jump.data.model.Badge
 import com.jumpdaily.jump.data.model.BadgeCatalog
-import com.jumpdaily.jump.ui.components.ChildAvatar
 import com.jumpdaily.jump.ui.components.FunBanner
+import com.jumpdaily.jump.ui.components.PageHeader
+import com.jumpdaily.jump.ui.theme.Dimens
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
 import com.jumpdaily.jump.ui.viewmodel.SessionViewModel
@@ -64,7 +65,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun AchievementsScreen(nav: NavHostController, records: RecordsViewModel, session: SessionViewModel, soundPlayer: SoundPlayer) {
+fun AchievementsScreen(records: RecordsViewModel, session: SessionViewModel, soundPlayer: SoundPlayer) {
     val badges by records.badges.collectAsStateWithLifecycle()
     val child by session.currentChild.collectAsStateWithLifecycle()
     val unlockedIds = badges.map { it.id }.toSet()
@@ -81,88 +82,88 @@ fun AchievementsScreen(nav: NavHostController, records: RecordsViewModel, sessio
     // 成就筛选：全部 / 已解锁 / 未解锁
     var filter by remember { mutableStateOf("all") }
 
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        // 标题区：与统计页头部保持一致（头像 + 标题），设置入口已移至「我的」页
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ChildAvatar(child = child, size = 48.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("${child?.name ?: "宝贝"} 的成就墙", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                Text("已解锁 ${unlockedIds.size} / ${BadgeCatalog.ALL.size} 个成就", fontSize = 13.sp, color = InkSoft)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
+    Box(Modifier.fillMaxSize().padding(Dimens.screenPadding)) {
+        Column(Modifier.fillMaxSize()) {
+            // 统一页头：头像 + 标题 + 解锁进度副标题（与统计页一致）
+            PageHeader(
+                child = child,
+                title = "${child?.name ?: "宝贝"} 的成就墙",
+                subtitle = "已解锁 ${unlockedIds.size} / ${BadgeCatalog.ALL.size} 个成就"
+            )
+            Spacer(Modifier.height(Dimens.headerGap))
 
-        // 「下一枚」目标：第一个未解锁的成就，给孩子一个明确的努力方向
-        val nextBadge = BadgeCatalog.ALL.firstOrNull { it.id !in unlockedIds }
+            // 「下一枚」目标：第一个未解锁的成就，给孩子一个明确的努力方向
+            val nextBadge = BadgeCatalog.ALL.firstOrNull { it.id !in unlockedIds }
 
-        // 成就总进度：已解锁占比，强化「还差几个就集齐」的目标感
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🏆 成就进度", fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("${unlockedIds.size} / ${BadgeCatalog.ALL.size}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            // 成就总进度：已解锁占比，强化「还差几个就集齐」的目标感
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏆 成就进度", fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("${unlockedIds.size} / ${BadgeCatalog.ALL.size}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    LinearProgressIndicator(
+                        progress = { unlockedIds.size.toFloat() / BadgeCatalog.ALL.size },
+                        modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(8.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
+                    )
+                    nextBadge?.let {
+                        Text(
+                            "下一枚：${it.emoji} ${it.title} · ${it.desc}",
+                            fontSize = 12.sp, color = InkSoft
+                        )
+                    }
                 }
-                LinearProgressIndicator(
-                    progress = { unlockedIds.size.toFloat() / BadgeCatalog.ALL.size },
-                    modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(8.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
-                )
-                nextBadge?.let {
-                    Text(
-                        "下一枚：${it.emoji} ${it.title} · ${it.desc}",
-                        fontSize = 12.sp, color = InkSoft
+            }
+
+            // 分段筛选：全部 / 已解锁 / 未解锁，点击切换九宫格展示范围
+            Spacer(Modifier.height(Dimens.headerGap))
+            AchievementFilter(selected = filter, onSelect = { filter = it })
+
+            val filtered = when (filter) {
+                "unlocked" -> BadgeCatalog.ALL.filter { it.id in unlockedIds }
+                "locked" -> BadgeCatalog.ALL.filter { it.id !in unlockedIds }
+                else -> BadgeCatalog.ALL
+            }
+            // 九宫格占满剩余高度（weight 必须在 ColumnScope 内生效），切筛选时高度稳定不再跳动
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                // 内边距：上 14dp 给首行角标(向上外溢)留位、右 14dp 给最右列角标(向右外溢)留位、底 16dp 代替原外部下边距
+                contentPadding = PaddingValues(top = 14.dp, end = 14.dp, bottom = 16.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) {
+                items(filtered, key = { it.id }) { badge ->
+                    val unlocked = badge.id in unlockedIds
+                    BadgeCard(
+                        badge = badge,
+                        unlocked = unlocked,
+                        onClick = {
+                            if (unlocked) {
+                                soundPlayer.star()
+                                feedback = "已解锁「${badge.title}」：${badge.desc}" to "🏆"
+                            } else {
+                                soundPlayer.correction()
+                                feedback = "解锁条件：${badge.desc}" to "💡"
+                            }
+                        }
                     )
                 }
             }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("继续加油，解锁更多成就吧！🌈", fontSize = 13.sp, color = InkSoft)
+            }
         }
-
-        // 分段筛选：全部 / 已解锁 / 未解锁，点击切换九宫格展示范围
-        Spacer(Modifier.height(10.dp))
-        AchievementFilter(selected = filter, onSelect = { filter = it })
-
-        // 顶部临时反馈横幅：点击卡片弹出，带彩带的花哨样式，缩放淡入淡出
+        // 鼓励横幅改为顶部浮层：不占滚动流位置，弹出/消失不再推挤下方的九宫格
         AnimatedVisibility(
             visible = feedback != null,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
             enter = fadeIn() + scaleIn(initialScale = 0.85f),
             exit = fadeOut() + scaleOut(targetScale = 0.85f)
         ) {
-            feedback?.let { (txt, em) -> FunBanner(txt, em, Modifier.padding(bottom = 14.dp)) }
-        }
-
-        val filtered = when (filter) {
-            "unlocked" -> BadgeCatalog.ALL.filter { it.id in unlockedIds }
-            "locked" -> BadgeCatalog.ALL.filter { it.id !in unlockedIds }
-            else -> BadgeCatalog.ALL
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            // 内边距：上 14dp 给首行角标(向上外溢)留位、右 14dp 给最右列角标(向右外溢)留位、底 16dp 代替原外部下边距
-            contentPadding = PaddingValues(top = 14.dp, end = 14.dp, bottom = 16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(filtered, key = { it.id }) { badge ->
-                val unlocked = badge.id in unlockedIds
-                BadgeCard(
-                    badge = badge,
-                    unlocked = unlocked,
-                    onClick = {
-                        if (unlocked) {
-                            soundPlayer.star()
-                            feedback = "已解锁「${badge.title}」：${badge.desc}" to "🏆"
-                        } else {
-                            soundPlayer.correction()
-                            feedback = "解锁条件：${badge.desc}" to "💡"
-                        }
-                    }
-                )
-            }
-        }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("继续加油，解锁更多成就吧！🌈", fontSize = 13.sp, color = InkSoft)
+            feedback?.let { (txt, em) -> FunBanner(txt, em) }
         }
     }
 }

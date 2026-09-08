@@ -98,9 +98,8 @@ fun FloatingJumpBar(
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size }
     ) {
-        val barW = if (barSize.width > 0) barSize.width.toFloat() else with(density) { EST_BAR_WIDTH.dp.toPx() }
         val barH = if (barSize.height > 0) barSize.height.toFloat() else with(density) { EST_BAR_HEIGHT.dp.toPx() }
-        val maxX = (containerSize.width - barW - marginPx).coerceAtLeast(0f)
+        // 水平边界不在外部算：静止吸附 x 由 offset lambda 按 edge 实时推导，拖动中夹取也在那里做
         val maxY = (containerSize.height - barH - marginPx).coerceAtLeast(0f)
 
         // 垂直位置初始化：容器就绪后按持久化比例换算一次（水平位置无需初始化——由 edge 实时推导）

@@ -55,5 +55,11 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- 渠道号（多渠道打包，2026-09-07）：值由 app/build.gradle.kts 的 productFlavors 注入，
+             official / huawei / xiaomi。未来接统计 SDK 时直接读这个 meta-data 上报即可。 -->
+        <meta-data
+            android:name="CHANNEL"
+            android:value="${CHANNEL_VALUE}" />
     </application>
 </manifest>

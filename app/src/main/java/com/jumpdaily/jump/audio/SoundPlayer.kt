@@ -30,6 +30,8 @@ class SoundPlayer(context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var soundOn = true
     private val vibrator = runCatching {
+        // VIBRATOR_SERVICE 已弃用（API 31+），但 minSdk 26 需双路径：新 API 用系统服务名常量
+        @Suppress("DEPRECATION")
         appContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }.getOrNull()
 

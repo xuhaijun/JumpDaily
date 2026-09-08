@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
@@ -17,10 +18,12 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -325,6 +328,51 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         }
     }
 
+    // ===== 返回拦截（2026-09-07）：跳了一些再点返回，先问「接着跳还是清零」 =====
+    // 性能注意：页面不能直接读高频 count（每跳重组整页）。这里用 derivedStateOf 把
+    // 「count > 0」派生成低频布尔——只在 0 ↔ 有数 翻转那一刻重组一次页面。
+    val countState = vm.count.collectAsStateWithLifecycle()
+    val hasAnyCount by remember { derivedStateOf { countState.value > 0 } }
+    // 返回弹框期间会先挂起（数字定格），选择后再决定去留
+    var showExitPrompt by remember { mutableStateOf(false) }
+    // 结果弹框显示时不拦返回（成绩已保存，让它自然退出）；无会话/没跳过也不拦（挂起无害）
+    BackHandler(enabled = (running || paused) && hasAnyCount && result == null) {
+        vm.pause() // 先挂起并落盘快照，弹框里的个数不再变化，取消时 resume 即可无缝回到训练
+        showExitPrompt = true
+    }
+    if (showExitPrompt) {
+        // 弹框内才读 count：此时已 pause，计数冻结，读它不会引发高频重组
+        val frozenCount by vm.count.collectAsStateWithLifecycle()
+        AlertDialog(
+            onDismissRequest = { showExitPrompt = false; child?.id?.let { vm.resume(it) } },
+            title = { Text("要休息一下吗？", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "这次已经跳了 $frozenCount 个。\n\n" +
+                            "「下次接着跳」：暂停并保留计数，回首页点浮条就能继续；\n" +
+                            "「清零退出」：这次的计数全部清空。"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitPrompt = false; child?.id?.let { vm.resume(it) } }) {
+                    Text("继续跳")
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        showExitPrompt = false
+                        vm.discard() // 清内存 + 清挂起快照 → 浮条不再显示
+                        nav.popBackStack()
+                    }) { Text("清零退出") }
+                    TextButton(onClick = { showExitPrompt = false; nav.popBackStack() }) {
+                        Text("下次接着跳", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        )
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             detector?.stop()
@@ -409,11 +457,16 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             }
         }
 
-        // 顶部：模式 + 计时 + 积分（毛玻璃小药丸）。抽成子组件，让「每秒/每跳」的变化只重组它自己
-        Box(
-            Modifier.fillMaxSize().padding(top = 16.dp, start = 16.dp, end = 16.dp),
-            contentAlignment = Alignment.TopCenter
+        // 顶部状态 + 中部主区域 + 底部按钮：合并为同一个 Column 统一排布。
+        // 此前顶栏（药丸 + 暗光提示，top 16dp）与中部（top 64dp）是两套独立全屏 Box 各自 padding，
+        // 人工错位 + 节奏卡 offset(-10dp) 容易在暗光提示出现时贴撞；合并后顶栏与中部同属一个流，
+        // 由 SpaceBetween + 中部 weight(1f) 排版，间距一致、不再重叠。
+        Column(
+            Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 44.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 顶部：模式 + 计时 + 积分（毛玻璃小药丸）+ 暗光提示。抽成子组件，让高频变化只重组它自己
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -432,18 +485,11 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     )
                 }
             }
-        }
 
-        // 中部主区域：根据是否检测到人，二选一展示「引导卡」或「伙伴+计数 HUD」。
-        // 关键点：两处共用「同一个」跳跳星；未检测到人时只显示引导卡，避免进入页面瞬间
-        // 出现「两个头像 + 多段文字叠在中部」的混乱观感。
-        // 底部 padding 44dp：比原来的上下对称 64dp 小，让暂停/结束按钮更贴近屏幕下方
-        Column(
-            Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 64.dp, bottom = 44.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // 中间区域（占满剩余高度并居中）：检测到人→训练 HUD；未检测到人→引导卡
+            // 中部主区域：根据是否检测到人，二选一展示「引导卡」或「伙伴+计数 HUD」。
+            // 关键点：两处共用「同一个」跳跳星；未检测到人时只显示引导卡，避免进入页面瞬间
+            // 出现「两个头像 + 多段文字叠在中部」的混乱观感。
+            // 中间区域占满剩余高度（weight 必须在 ColumnScope 内生效），并居中；检测到人→训练 HUD，否则→引导卡
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 if (hasPermission && modelPath != null && poseError == null && !hasPose) {
                     GuideCard()
@@ -452,14 +498,16 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
                     TrainingHud(vm = vm, pulse = pulse)
                 }
             }
-            // 暂停时给一句安抚提示，让孩子知道「随时可以歇一下」
-            if (paused) {
-                Text(
-                    "⏸ 已暂停，休息一下吧～",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.92f)
-                )
+            // 暂停时给一句安抚提示，让孩子知道「随时可以歇一下」（固定高度占位，避免中部跳动）
+            Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.Center) {
+                if (paused) {
+                    Text(
+                        "⏸ 已暂停，休息一下吧～",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // 暂停 / 继续：中途想歇就歇，计时与计数一起停（见 TrainingViewModel.pause）
@@ -518,8 +566,9 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
             )
         }
 
-        // 2026-09-05：返回确认框已移除——跳绳中返回 = 自动暂停挂起（回首页浮条可继续），
-        // 不再弹「结束并保存？」；正式结束走页内「结束」按钮。
+        // 2026-09-05：返回不再直接「结束保存」。2026-09-07 改为：跳了一些（count>0）时
+        // 拦截返回弹「继续跳 / 下次接着跳 / 清零退出」三选框（见上方 BackHandler）；
+        // 没跳过（count=0）仍自动挂起（无害空操作，浮条不会出现）。
     }
 }
 

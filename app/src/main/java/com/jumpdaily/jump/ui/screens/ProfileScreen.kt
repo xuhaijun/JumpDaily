@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -109,6 +110,10 @@ fun ProfileScreen(
     }
 
     var showVersion by remember { mutableStateOf(false) }
+    // 清理缓存确认框（2026-09-07）：删除动作不可逆，先让用户确认，防误触；
+    // 没有可清理的缓存时改弹「已是干净的」提示框，避免出现「将删除 0 B」的怪文案
+    var showClearCache by remember { mutableStateOf(false) }
+    var showCacheEmpty by remember { mutableStateOf(false) }
 
     // 兑换交互：当前点中的奖品（null=无）；claimed=true 表示该奖品已兑换（弹取消框）
     var prizeDialog by remember { mutableStateOf<Rewards.Prize?>(null) }
@@ -276,8 +281,7 @@ fun ProfileScreen(
             Column(Modifier.padding(vertical = 6.dp)) {
                 ProfileLinkRow("📄", "隐私政策", "") { nav.navigate(Screen.Privacy.route) }
                 ProfileLinkRow("🧹", "清理缓存", formatBytes(cacheBytes)) {
-                    clearCache(ctx)
-                    cacheBytes = 0L
+                    if (cacheBytes > 0L) showClearCache = true else showCacheEmpty = true
                 }
                 ProfileLinkRow("ℹ️", "版本信息", "v$version") { showVersion = true }
             }
@@ -295,6 +299,42 @@ fun ProfileScreen(
     }
 
     // ===== 弹框 =====
+    // 没有可清理的缓存：友好提示（不出现「将删除 0 B」的怪文案）
+    if (showCacheEmpty) {
+        AlertDialog(
+            onDismissRequest = { showCacheEmpty = false },
+            title = { Text("缓存很干净 ✨", fontWeight = FontWeight.Bold) },
+            text = { Text("目前没有需要清理的缓存。") },
+            confirmButton = {
+                TextButton(onClick = { showCacheEmpty = false }) { Text("知道啦") }
+            }
+        )
+    }
+
+    // 清理缓存确认框：展示当前缓存大小，明确「不影响跳绳记录」降低顾虑，确认后才真正删除
+    if (showClearCache) {
+        AlertDialog(
+            onDismissRequest = { showClearCache = false },
+            title = { Text("清理缓存？", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "将删除 ${formatBytes(cacheBytes)} 临时缓存（图片、日志等），" +
+                            "不会影响跳绳记录、积分和奖品。\n\n删除后无法恢复哦。"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearCache = false }) { Text("取消") }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearCache = false
+                    clearCache(ctx)
+                    cacheBytes = 0L
+                }) { Text("清理", fontWeight = FontWeight.Bold) }
+            }
+        )
+    }
+
     if (showVersion) {
         AlertDialog(
             onDismissRequest = { showVersion = false },
@@ -465,8 +505,9 @@ private fun ProfileLinkRow(icon: String, title: String, desc: String, onClick: (
             Spacer(Modifier.weight(1f))
         }
         // 不留 Spacer：箭头图标自身视口自带内边距，视觉间隙已足够，再加会显得过宽
+        // AutoMirrored 版本：RTL 语言下箭头自动镜像（原 Filled 版本已弃用）
         Icon(
-            Icons.Filled.KeyboardArrowRight, contentDescription = null,
+            Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(20.dp), tint = InkSoft
         )
     }

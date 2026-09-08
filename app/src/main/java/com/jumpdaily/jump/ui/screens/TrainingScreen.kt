@@ -60,6 +60,7 @@ import com.jumpdaily.jump.ui.components.JumpMascot
 import com.jumpdaily.jump.ui.components.LottieRes
 import com.jumpdaily.jump.ui.components.PopCount
 import com.jumpdaily.jump.ui.components.StatCard
+import com.jumpdaily.jump.ui.theme.Dimens
 import com.jumpdaily.jump.ui.theme.InkSoft
 import com.jumpdaily.jump.ui.theme.Mint
 import com.jumpdaily.jump.ui.theme.SkyBlue
@@ -109,7 +110,7 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
-            Modifier.fillMaxSize().padding(20.dp).navigationBarsPadding(),
+            Modifier.fillMaxSize().padding(Dimens.screenPadding).navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -131,8 +132,10 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
                 Text(formatDuration(elapsed), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
 
-            // 中部：吉祥物 + 环形目标进度 + 大数字
+            // 中部：吉祥物 + 环形目标进度 + 大数字。weight(1f) 吸收全部剩余高度，
+            // 让 SpaceBetween 无可分配空间，矮屏不再挤压、暂停胶囊出现/消失也不会把中部顶动
             Column(
+                Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -167,19 +170,25 @@ fun TrainingScreen(nav: NavHostController, session: SessionViewModel, container:
                 StatCard("⭐", "$sessionPoints", "本次积分", Modifier.weight(1f), valueSize = 20.sp)
             }
 
-            // 底部：暂停提示胶囊 + 暂停/继续 + 结束
-            if (paused) {
-                // 柔和胶囊卡片替代裸文本，暂停状态更醒目也更可爱
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
-                    Text(
-                        "⏸ 已暂停，休息一下吧～",
-                        Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+            // 底部：暂停提示胶囊 + 暂停/继续 + 结束。
+            // 固定高度槽始终占位：暂停时出现卡片、继续时留空，但不改变底部按钮行的位置，杜绝跳动
+            Box(
+                Modifier.fillMaxWidth().height(44.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (paused) {
+                    // 柔和胶囊卡片替代裸文本，暂停状态更醒目也更可爱
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Text(
+                            "⏸ 已暂停，休息一下吧～",
+                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth()) {

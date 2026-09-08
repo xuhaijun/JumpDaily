@@ -405,6 +405,16 @@ Gradle 是构建引擎，AGP（Android Gradle Plugin）提供 Android 构建任�
 - **`Unresolved reference 'util'`** → `signingConfigs` 内 `java.util.Properties()` 需在文件顶部 `import java.util.Properties` 后改用 `Properties()`。
 - `packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"`：排除 MediaPipe 许可文件冲突。
 
+### 多渠道（productFlavors）
+- `flavorDimensions("channel")` + `productFlavors { create("official"/"huawei"/"xiaomi") { manifestPlaceholders["CHANNEL_VALUE"] = name } }`，`defaultConfig` 兜底 `official`。
+- 渠道号经 `manifestPlaceholders` 注入 `AndroidManifest.xml` 的 `<meta-data android:name="CHANNEL" android:value="${CHANNEL_VALUE}" />`；AGP 8 按渠道分子目录产出（`apk/<渠道>/<类型>/`）。
+- 产物命名在 `applicationVariants.all { outputs.all { (this as BaseVariantOutputImpl).outputFileName = "JumpDaily_v${versionName}_${flavorName}_${buildType.name}_${日期}.apk" } }`（须顶部 `import java.text.SimpleDateFormat` / `import java.util.Date`）。
+- 一键脚本：`tools/build_apk.bat`（Windows）与 `tools/build_apk.sh`（Git Bash / Linux / macOS），参数 `[all|official|huawei|xiaomi] [release|debug] [install]`，自动定位 `JAVA_HOME`/`ANDROID_HOME` → 构建 → 归档 `dist\<日期>\` → 列清单；带 `install` 末尾 `adb install`。
+
+### 踩坑注意（一键脚本）
+- **bat 三大坑**：① 禁用 `chcp 65001`（重定向时静默死）；② LF 行尾 cmd 解析括号块崩，须转 CRLF；③ `if` 括号块内 `echo` 文本含裸括号 `(xxx)` 会提前闭合块静默中止。
+- **sh**：Git Bash 下 `MINGW`/`MSYS` 用 `gradlew.bat`，其余用 `./gradlew`；`JAVA_HOME`/`ANDROID_HOME` 保持 Windows 原生路径（勿 `cygpath` 转换，否则 gradlew.bat 报 invalid directory）；`set -euo pipefail`。
+
 ---
 
 > 本文与 [ARCHITECTURE.md](./ARCHITECTURE.md) 互为补充：架构文档讲「怎么分层」，本文讲「每层用了什么技术、为什么这么用」。如某技术需进一步展开（如 Room Migration 实战、MediaPipe 自定义模型训练），可在对应章节续写。

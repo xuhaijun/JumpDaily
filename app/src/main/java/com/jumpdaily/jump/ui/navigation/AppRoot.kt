@@ -135,13 +135,14 @@ fun AppRoot(container: AppContainer) {
             }
 
             // 浮条可见性：
-            // - 挂起会话（paused=true）：四 tab 常驻，胶囊显示「已跳 X 个 · 时长 | 继续」
+            // - 挂起会话（paused=true）且确实跳过（count>0）：四 tab 常驻挂起胶囊「已跳 X 个 · 继续」；
+            //   count=0 的空挂起（进去没跳就返回）不算数——「已跳 0 个」对孩子是噪音，不显示
             // - 无会话（!running && !paused）：首页已有醒目「开始跳绳」按钮（重构后首屏可见），
             //   不再重复显示浮条；浮条仅在有挂起会话时作为跨页续跳入口
             // - 训练页 / 二级页（设置等）/ 启动页不显示
             val sessionActive = tRunning || tPaused
             val barMode = when {
-                tPaused && showBottomBar -> Mode.SUSPENDED
+                tPaused && tCount > 0 && showBottomBar -> Mode.SUSPENDED
                 else -> null
             }
 
@@ -203,7 +204,7 @@ fun AppRoot(container: AppContainer) {
                     composable(Screen.Training.route) { TrainingScreen(nav, session, container) }
                     composable(Screen.CameraTraining.route) { CameraTrainingScreen(nav, session, container) }
                     composable(Screen.Stats.route) { StatsScreen(records, session, container.soundPlayer, nav) }
-                    composable(Screen.Achievements.route) { AchievementsScreen(nav, records, session, container.soundPlayer) }
+                    composable(Screen.Achievements.route) { AchievementsScreen(records, session, container.soundPlayer) }
                     composable(Screen.Children.route) { ChildrenScreen(session, container) }
                     composable(Screen.Settings.route) { SettingsScreen(container, nav) }
                     composable(Screen.Privacy.route) { PrivacyScreen(nav) }
