@@ -484,6 +484,13 @@ app/src/main/java/com/jumpdaily/jump/
 - [Compose 主题与 Material3 体系](./COMPOSE_THEME_MATERIAL3.md)：`lightColorScheme`/`darkColorScheme` 角色体系、糖果色板、Shapes/Typography 定制、`JumpDailyTheme(darkTheme)` 顶层应用、夜间切换来自 `prefsRepository.darkTheme`、为何不用 `dynamicColorScheme`、取色规范。
 - [权限与隐私合规（代码级）](./PERMISSION_PRIVACY.md)：Manifest 5 权限最小化 + 摄像头 `required=false`、CAMERA 三步法（check→shouldShow→自定义说明/去设置）、POST_NOTIFICATIONS 版本门控+回退、`privacy_accepted` 首启同意框、`PrivacyScreen` 10 章政策、儿童合规与商店衔接。
 
+- **协程/语言/导航进阶**：
+  - [协程异常处理/超时取消实战](./COROUTINE_EXCEPTION_TIMEOUT.md)：协作式取消（`isActive`/`ensureActive`）、`viewModelScope` 自动取消、`coroutineScope` vs `supervisorScope`、`launch` vs `async` 异常延迟、`try/catch` 真实点位、`withTimeoutOrNull` 补强（相机绑定/模型下载）、反模式速查。
+  - [Compose 手势与自定义 Layout](./COMPOSE_GESTURE_LAYOUT.md)：手势三档 API、`FloatingJumpBar` 拖动吸边（detectDragGestures/tap slop/change.consume/lambda offset）、自定义 `Layout` 原理与何时用（⚠️ 当前未用）。
+  - [Navigation 深层链接/类型安全路由落地](./NAVIGATION_DEEPLINK.md)：当前字符串路由现状、Manifest `intent-filter`+`navDeepLink` 蓝图、类型安全路由（2.8.0+ Kotlin Serialization，⚠️ 当前 2.7.7 待升级）。
+  - [Kotlin 在 Android 的常规用法](./KOTLIN_ANDROID_USAGE.md)：val/var、data/sealed/enum、扩展函数、作用域函数、集合/序列、高阶函数、空安全、属性委托、协程基础，配本项目示例。
+  - [Android 高级开发核心技术](./ANDROID_ADVANCED_CORE.md)：Framework 源码（Binder/Handler/AMS/WMS/ART）、性能（卡顿/内存/ANR/启动/包体）、架构/模块化、Jetpack 全家桶、并发、构建工程化、安全合规、跨平台，附本项目掌握度自检表。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
