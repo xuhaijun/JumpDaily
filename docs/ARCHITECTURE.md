@@ -451,3 +451,15 @@ app/src/main/java/com/jumpdaily/jump/
 
 - [Room Migration 实战](./ROOM_MIGRATION.md)：基于 `data/local/AppDatabase` 现状（v1 + `fallbackToDestructiveMigration`），演示 v1→v2 手写 Migration、exportSchema 方案校验、room-testing 迁移测试、AutoMigration 取舍与生产上线清单。
 - [MediaPipe 姿态估计实战](./MEDIAPIPE_POSE.md)：基于 `camera/PoseJumpDetector` + `PoseModelProvider` 真实代码，讲清 PoseLandmarker API、33 关键点、模型三级加载与节流降级；并含「自定义模型训练（动作分类 / 替换 landmarker）」进阶参考（⚠️ 当前项目用官方预置 lite 模型，未训练自定义模型）。
+
+**性能 / 工程 / 数据（2026-09-09 新增）：**
+
+- [Compose 高频状态重组优化](./COMPOSE_RECOMPOSITION.md)：摄像头训练页卡顿根因，四条原则（高频 state 下沉子组件 `collectAsStateWithLifecycle`、骨架只在 Canvas 绘制阶段读、`derivedStateOf` 派低频布尔、父页只留低频 state），含重组范围对比图与诊断方法。
+- [TTS 语音播报全局仲裁](./TTS_ARBITRATION.md)：`VoiceSpeaker` 统一出口 + `VoicePriority` 枚举 + 静默窗口抢占规则，解决「30 秒 13 句互相掐断」；含调用方共用时间戳教训与华为 `OnInitListener` 坑。
+- [R8 / ProGuard Release 打包坑](./R8_RELEASE.md)：`proguard-android.txt` vs `-optimize.txt` 改坏 MediaPipe、仅 ARM ABI、`release` logcat 不可靠→文件落盘诊断、华为 TTS `OnInitListener` 必须每次 new。
+- [CameraX ImageAnalysis 节流](./CAMERAX_THROTTLE.md)：`bindCamera` 66ms（15fps）帧节流、`STRATEGY_KEEP_ONLY_LATEST`、`proxy.close()` 必须、ResolutionSelector、PERFORMANCE TextureView、旋转校正。
+- [DataStore 多孩子隔离](./DATASTORE_MULTICHILD.md)：积分/奖品按 `childId` 动态 key 隔离、每 3 秒批量 flush（勿每跳写盘）、`earned` vs `redeemed` 语义区分、挂起快照持久化。
+
+**上手向导：**
+
+- [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
