@@ -478,6 +478,12 @@ app/src/main/java/com/jumpdaily/jump/
 - [测试体系](./TESTING.md)：现有 3 个 JVM 纯逻辑单测清单、测试金字塔现状、turbine/mockk/coroutines-test/Room 补齐方案、如何跑 `gradlew testDebugUnitTest`、覆盖率与 CI 门禁。
 - [CI 自动化发布流水线](./CI_PIPELINE.md)：GitHub Actions `quality`+`build-release` 双 job、签名从 Secret 还原到 `local.properties`、三渠道包归档、Gitee 同步、商店自动上传（⚠️ 当前无 CI，待实施）。
 
+**存储 / 主题 / 合规（2026-09-09 续）：**
+
+- [DataStore 内部机制 与 Kotlin Serialization](./DATASTORE_KOTLIN_SERIALIZATION.md)：`datastore-preferences:1.1.1`（protobuf 文件 `jump_prefs.preferences_pb`）、事务性 `edit`/`data` 冷 Flow 重放、类型安全 `Keys` 封装、多孩子动态 key 隔离、`SuspendedSession` 手写逐字段映射；Typed DataStore + `@Serializable` 进阶蓝图（⚠️ 当前未引入 kotlinx-serialization）。
+- [Compose 主题与 Material3 体系](./COMPOSE_THEME_MATERIAL3.md)：`lightColorScheme`/`darkColorScheme` 角色体系、糖果色板、Shapes/Typography 定制、`JumpDailyTheme(darkTheme)` 顶层应用、夜间切换来自 `prefsRepository.darkTheme`、为何不用 `dynamicColorScheme`、取色规范。
+- [权限与隐私合规（代码级）](./PERMISSION_PRIVACY.md)：Manifest 5 权限最小化 + 摄像头 `required=false`、CAMERA 三步法（check→shouldShow→自定义说明/去设置）、POST_NOTIFICATIONS 版本门控+回退、`privacy_accepted` 首启同意框、`PrivacyScreen` 10 章政策、儿童合规与商店衔接。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
