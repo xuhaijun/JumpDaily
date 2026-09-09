@@ -471,6 +471,13 @@ app/src/main/java/com/jumpdaily/jump/
 
 - [应用商店发布流程](./STORE_PUBLISHING.md)：渠道/flavor 对应、资料清单（App 备案/软著/隐私政策公网 URL）、一键出包、华为/小米/应用宝/自有/Google Play 步骤、儿童合规与签名坑、发布前 Checklist（⚠️ 备案/软著/隐私 URL/签名待补）。
 
+**工程化与质量（2026-09-09 续）：**
+
+- [Kotlin 协程 / Flow 在 VM 最佳实践](./COROUTINE_FLOW_VM.md)：`_x: MutableStateFlow` + 只读出口、`stateIn(WhileSubscribed(5000))`、`flatMapLatest`/`combine`、`statsLoaded` 真实首帧标志、一次性事件 `StateFlow` 局限、批量 flush、种子数据放 `init`，含 VM 测试缺口。
+- [导航架构（Navigation Compose）](./NAVIGATION_ARCH.md)：`Screen` 密封路由表、底部 `popUpTo+launchSingleTop`、Activity 级 VM 跨页共享（训练会话挂起续跳）、首页返回 `finishAffinity`、浮条覆盖层、类型安全路由演进方向。
+- [测试体系](./TESTING.md)：现有 3 个 JVM 纯逻辑单测清单、测试金字塔现状、turbine/mockk/coroutines-test/Room 补齐方案、如何跑 `gradlew testDebugUnitTest`、覆盖率与 CI 门禁。
+- [CI 自动化发布流水线](./CI_PIPELINE.md)：GitHub Actions `quality`+`build-release` 双 job、签名从 Secret 还原到 `local.properties`、三渠道包归档、Gitee 同步、商店自动上传（⚠️ 当前无 CI，待实施）。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
