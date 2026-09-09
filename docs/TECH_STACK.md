@@ -163,6 +163,8 @@ Room 是 SQLite 的对象映射（ORM）层：`@Entity` 标实体、`@Dao` 写�
 - **破坏性迁移**：`fallbackToDestructiveMigration` 升级 DB 版本会清空数据，正式版要写 `Migration` 或 `autoMigrations`。
 - 删除孩子需联动删记录（`ChildrenRepository.delete` 里 `db.jumpRecordDao().deleteByChild(child.id)`），否则留孤儿数据。
 
+> 📌 实战深挖：[Room Migration 实战](./ROOM_MIGRATION.md) —— 从当前 `fallbackToDestructiveMigration` 演进到 v1→v2 手写 Migration（含 exportSchema 校验、room-testing 迁移测试、AutoMigration 取舍与生产上线清单）。
+
 ---
 
 ## 6. DataStore（键值偏好）
@@ -271,6 +273,8 @@ Google MediaPipe Tasks Vision 提供预训练模型的高层 API：`PoseLandmark
 - **模型文件约 5MB**：国内 `storage.googleapis.com` 可能直连失败，推荐把 `pose_landmarker.task` 放 `app/src/main/assets/`。
 - **`tasks-vision` 坐标**：正确为 `com.google.mediapipe:tasks-vision:0.10.14`（不是 `mediapipe_tasks_vision`）。
 - 混淆：release 需保留 MediaPipe 原生库；本项目 `minifyEnabled=false` 暂未触发。
+
+> 📓 实战深挖：[MediaPipe 姿态估计实战](./MEDIAPIPE_POSE.md) —— 基于本项目 `PoseJumpDetector`/`PoseModelProvider` 真实代码讲清 API、33 关键点、模型三级加载与节流降级；并含「自定义模型训练（动作分类 / 替换 landmarker）」进阶参考（⚠️ 当前用官方预置 lite 模型）。
 
 ---
 

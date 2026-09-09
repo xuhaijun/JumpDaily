@@ -30,6 +30,7 @@
 - [9. 测试策略](#9-测试策略)
 - [10. 已知限制与演进路线](#10-已知限制与演进路线)
 - [11. 目录结构速查](#11-目录结构速查)
+- [12. 深度专题文档（Deep Dives）](#12-深度专题文档deep-dives)
 
 ---
 
@@ -441,3 +442,12 @@ app/src/main/java/com/jumpdaily/jump/
 
 ---
 *文档随代码演进维护；如架构有重要变更，请同步更新本文件与 CHANGELOG.md。*
+
+---
+
+## 12. 深度专题文档（Deep Dives）
+
+针对本项目关键技术点的**实战深挖**，含可落地的代码片段与真机坑位：
+
+- [Room Migration 实战](./ROOM_MIGRATION.md)：基于 `data/local/AppDatabase` 现状（v1 + `fallbackToDestructiveMigration`），演示 v1→v2 手写 Migration、exportSchema 方案校验、room-testing 迁移测试、AutoMigration 取舍与生产上线清单。
+- [MediaPipe 姿态估计实战](./MEDIAPIPE_POSE.md)：基于 `camera/PoseJumpDetector` + `PoseModelProvider` 真实代码，讲清 PoseLandmarker API、33 关键点、模型三级加载与节流降级；并含「自定义模型训练（动作分类 / 替换 landmarker）」进阶参考（⚠️ 当前项目用官方预置 lite 模型，未训练自定义模型）。
