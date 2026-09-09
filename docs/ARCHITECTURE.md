@@ -467,6 +467,10 @@ app/src/main/java/com/jumpdaily/jump/
 - [多渠道 Flavor 进阶（HMS/小米推送差异化）](./FLAVOR_ADVANCED.md)：flavor 专属 `huaweiImplementation/xiaomiImplementation` 按需依赖、源集隔离、Manifest 占位符、华为 Push Kit / 小米 Mi Push 接入骨架（⚠️ 当前仅 CHANNEL 占位，未接推送 SDK）。
 - [Compose 动画性能](./COMPOSE_ANIMATION.md)：无限动画(`rememberInfiniteTransition`)收敛叶子、Canvas 走 DrawScope 读 `Animatable`、高频 transform 用 `graphicsLayer`、Lottie 缓存与坑；承接重组优化篇。
 
+**发布与交付（2026-09-09）：**
+
+- [应用商店发布流程](./STORE_PUBLISHING.md)：渠道/flavor 对应、资料清单（App 备案/软著/隐私政策公网 URL）、一键出包、华为/小米/应用宝/自有/Google Play 步骤、儿童合规与签名坑、发布前 Checklist（⚠️ 备案/软著/隐私 URL/签名待补）。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
