@@ -460,6 +460,13 @@ app/src/main/java/com/jumpdaily/jump/
 - [CameraX ImageAnalysis 节流](./CAMERAX_THROTTLE.md)：`bindCamera` 66ms（15fps）帧节流、`STRATEGY_KEEP_ONLY_LATEST`、`proxy.close()` 必须、ResolutionSelector、PERFORMANCE TextureView、旋转校正。
 - [DataStore 多孩子隔离](./DATASTORE_MULTICHILD.md)：积分/奖品按 `childId` 动态 key 隔离、每 3 秒批量 flush（勿每跳写盘）、`earned` vs `redeemed` 语义区分、挂起快照持久化。
 
+**性能 / 工程进阶（2026-09-09 续）：**
+
+- [Baseline Profile 落地](./BASELINE_PROFILE.md)：`profileinstaller` 已引入但缺源码 `baseline-prof.txt`/宏基准模块；给出 `benchmark` 变体 + `:baselineprofile` 模块 + 生成命令 + DexLayout + 验证回归（⚠️ 当前未落地，待实施）。
+- [WorkManager 每日提醒工程化](./WORKMANAGER_REMINDER.md)：现状（调度/Worker/`Configuration.Provider` 坑已落地）+ 进阶（PeriodicWork 不精确→AlarmManager 桥接、Doze/厂商限制、多孩子独立排程、单测）。
+- [多渠道 Flavor 进阶（HMS/小米推送差异化）](./FLAVOR_ADVANCED.md)：flavor 专属 `huaweiImplementation/xiaomiImplementation` 按需依赖、源集隔离、Manifest 占位符、华为 Push Kit / 小米 Mi Push 接入骨架（⚠️ 当前仅 CHANNEL 占位，未接推送 SDK）。
+- [Compose 动画性能](./COMPOSE_ANIMATION.md)：无限动画(`rememberInfiniteTransition`)收敛叶子、Canvas 走 DrawScope 读 `Animatable`、高频 transform 用 `graphicsLayer`、Lottie 缓存与坑；承接重组优化篇。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。
