@@ -278,13 +278,13 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         if (!vm.running.value && !vm.paused.value) vm.start(child?.id ?: 0L, CountMode.CAMERA)
     }
 
-    // 后台获取模型路径（可能联网下载），结果写入 modelPath / modelMsg
+    // 后台获取模型路径（可能联网下载），加 15s 超时兜底：极端慢网/断网时 getModelPathSafely
+    // 在 IO 调度器上超时返回 null，此处优雅降级（不绑相机、提示手动放模型），避免协程/线程被挂死。
+    // 详见 docs/COROUTINE_EXCEPTION_TIMEOUT.md「withTimeoutOrNull 补强」一节。
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            runCatching { PoseModelProvider.getModelPath(ctx) }
-                .onSuccess { modelPath = it }
-                .onFailure { modelMsg = "姿态模型加载失败：请检查网络，或手动把 pose_landmarker.task 放入 app/src/main/assets/" }
-        }
+        val path = runCatching { PoseModelProvider.getModelPathSafely(ctx) }.getOrNull()
+        if (path != null) modelPath = path
+        else modelMsg = "姿态模型加载失败或超时：请检查网络，或手动把 pose_landmarker.task 放入 app/src/main/assets/"
     }
 
     // 权限与模型都就绪后再绑定相机；缺权限时先弹我们的说明框（不直接硬弹系统框）

@@ -166,7 +166,7 @@ if (cfg == null) { /* 超时降级 */ }
 | 位置 | 风险 | 建议 |
 |------|------|------|
 | `ProcessCameraProvider.getInstance(ctx).get()`（`CameraTrainingScreen.kt:226`） | 极端机型相机服务卡死，`future.get()` 永久阻塞主线程 executor | 改用 `withTimeoutOrNull` + 失败提示 |
-| `PoseModelProvider` 模型下载/拷贝（`MEDIAPIPE_POSE.md` 三级加载） | 网络慢/断网时 `assets→cache` 拷贝或下载无上界 | 下载包 `withTimeoutOrNull(15_000)` 失败回退预置 |
+| `PoseModelProvider` 模型下载/拷贝（`MEDIAPIPE_POSE.md` 三级加载） | 网络慢/断网时 `assets→cache` 拷贝或下载无上界 | ✅ **已落地**：`PoseModelProvider.getModelPathSafely`（IO 调度器 + `withTimeoutOrNull(15_000)`）超时/失败返回 `null`，`CameraTrainingScreen` 降级提示（见下方改动） |
 
 > 为什么要补：`future.get()` 在 `ContextCompat.getMainExecutor` 里执行，一旦卡住会**卡主线程**甚至触发 ANR；加 `withTimeoutOrNull` 是低成本的健壮性兜底。
 
