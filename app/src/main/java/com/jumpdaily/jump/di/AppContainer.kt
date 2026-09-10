@@ -9,6 +9,7 @@ import com.jumpdaily.jump.data.local.AppDatabase
 import com.jumpdaily.jump.data.repository.ChildrenRepository
 import com.jumpdaily.jump.data.repository.JumpRepository
 import com.jumpdaily.jump.data.repository.PreferencesRepository
+import com.jumpdaily.jump.data.repository.WidgetRepository
 import com.jumpdaily.jump.reminder.ReminderScheduler
 import com.jumpdaily.jump.ui.viewmodel.ChildrenViewModel
 import com.jumpdaily.jump.ui.viewmodel.RecordsViewModel
@@ -28,6 +29,8 @@ class AppContainer(app: Application) {
     val childrenRepository = ChildrenRepository(db)
     val jumpRepository = JumpRepository(db)
     val prefsRepository = PreferencesRepository(app)
+    /** 桌面小组件数据来源（聚合当前孩子 + 今日/连续/累计，纯本地）。 */
+    val widgetRepository = WidgetRepository(jumpRepository, childrenRepository, prefsRepository)
     val soundPlayer = SoundPlayer(app)
     val voiceSpeaker = VoiceSpeaker(app)
     val sensorManager = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager

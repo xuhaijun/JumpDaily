@@ -248,4 +248,4 @@ fun `reminder failure does not crash`() = runTest {
 // 取消测试：advanceTime 后 assert 计时器协程 isCancelled
 ```
 
-**小结**：本项目协程基础扎实（作用域用对、`collect` 自动取消、`try/catch` 关键路径已包），**超时兜底已部分落地**：相机绑定已于 2026-09-10 用 Guava `Future.get(timeout, unit)` 加 10s 超时（见 `CameraTrainingScreen.kt:226`，因绑定在 `addListener` 非协程回调里，用 Future 原生超时等价于 `withTimeoutOrNull` 意图，编译已验证）；**模型下载仍待补**（按第 5.1 节给 `PoseModelProvider` 的联网三级加载加 `withTimeoutOrNull(15_000)` 回退预置）。另需补"async 异常延迟"认知。
+**小结**：本项目协程基础扎实（作用域用对、`collect` 自动取消、`try/catch` 关键路径已包），**超时兜底已部分落地**：相机绑定已于 2026-09-10 用 Guava `Future.get(timeout, unit)` 加 10s 超时（见 `CameraTrainingScreen.kt:226`，因绑定在 `addListener` 非协程回调里，用 Future 原生超时等价于 `withTimeoutOrNull` 意图，编译已验证）；**模型下载仍待补**（按第 5.1 节给 `PoseModelProvider` 的联网三级加载加 `withTimeoutOrNull(15_000)` 回退预置）。**「async 异常延迟暴露」认知已落地（2026-09-07）**：`widget/WidgetAggregator.kt` 用 `coroutineScope` + 四个 `async` + 逐一 `await()` 实现 fail-fast，单测 `WidgetAggregatorTest` 固化「单源抛错必须上抛、不可静默吞」；详见 [`GLANCE_WIDGET.md`](./GLANCE_WIDGET.md) §5。

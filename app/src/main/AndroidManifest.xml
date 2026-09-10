@@ -61,5 +61,18 @@
         <meta-data
             android:name="CHANNEL"
             android:value="${CHANNEL_VALUE}" />
+
+        <!-- 桌面小组件（Jetpack Glance，纯本地）：系统按此 receiver 名实例化并派发更新事件 -->
+        <receiver
+            android:name=".widget.JumpDailyWidgetReceiver"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
     </application>
 </manifest>

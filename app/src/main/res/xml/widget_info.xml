@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="200dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="80dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_loading">
+    <!--
+      updatePeriodMillis=1800000（30 分钟，系统允许的最小周期）→ 系统周期性自动刷新；
+      此外小组件上的「刷新」按钮通过 actionRunCallback 主动触发一次 update。
+      initialLayout 仅用于 Glance 首帧渲染前的占位，避免 host 显示空白。
+    -->
+</appwidget-provider>

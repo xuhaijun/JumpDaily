@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">爱跳绳</string>
+    <string name="widget_description">爱跳绳：今日打卡与连续天数一键查看</string>
+    <string name="widget_loading">爱跳绳加载中…</string>
 </resources>

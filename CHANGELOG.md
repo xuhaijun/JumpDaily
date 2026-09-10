@@ -533,6 +533,28 @@
 
 ---
 
+## [2026-09-07] 桌面小组件（Jetpack Glance 1.1.0）+ 固化「async 异常延迟暴露」+ Room kapt→KSP
+
+### 桌面小组件（新功能，纯本地无账号）
+- 新增 `widget/JumpDailyWidget.kt`（`GlanceAppWidget`）：展示当前孩子「今日个数 / 连续天数 / 累计总数」，含「刷新」「去跳绳 🏃」两按钮。
+- 新增 `widget/JumpDailyWidgetReceiver.kt`（`GlanceAppWidgetReceiver`）、`widget/RefreshWidgetAction.kt`（`ActionCallback` 主动 `update`）。
+- 新增 `data/repository/WidgetRepository.kt` + `widget/WidgetAggregator.kt` + `data/model/WidgetSnapshot.kt`：纯本地（Room + DataStore）并行聚合快照，失败兜底空快照。
+- `AppContainer` 新增 `widgetRepository`；`AndroidManifest` 注册 receiver；新增 `res/xml/widget_info.xml`、`res/layout/glance_loading.xml`、字符串 `widget_description` / `widget_loading`。
+- `proguard-rules.pro` 加 `-keep class com.jumpdaily.jump.widget.**`（ActionCallback 按类名反射实例化，混淆会改掉类名致 `ClassNotFoundException`）。
+- 依赖：`androidx.glance:glance:1.1.0` + `glance-appwidget:1.1.0`。
+
+### 工程：Room 注解处理 kapt → KSP
+- 根因：Room 2.6.x + kapt 在 JDK 21 + AGP 8.5 下触发 `processingEnv must not be null` NPE（此前一直靠缓存产物掩盖，clean 后首次真实失败）。
+- 修复：根/模块 `build.gradle.kts` 把 `kapt` 插件改 `com.google.devtools.ksp`（`1.9.24-1.0.20`），Room 处理器改 `ksp(...)`；KSP 不依赖 javac 内部 API，JDK 21 下稳定且构建更快。
+
+### 协程认知落地：async 异常延迟暴露
+- `widget/WidgetAggregator.kt` 用 `coroutineScope` + 四个 `async` + **逐一 `await()`** 实现 fail-fast：任一源抛错立即上抛、绝不被静默吞（对比 `supervisorScope` 下漏 `await` 吞异常的坑）。
+- 新增单测 `app/src/test/.../widget/WidgetAggregatorTest.kt` 固化该行为（单源抛错必须上抛、全成功返回快照）；`testImplementation` 用 `kotlinx-coroutines-test:1.7.3`（对齐 BOM，镜像源未收录 1.7.6）。
+- `compileOfficialDebugKotlin` 与 `testOfficialDebugUnitTest` 均 BUILD SUCCESSFUL。
+- 文档：新增 `docs/GLANCE_WIDGET.md`；`docs/ARCHITECTURE.md`、`docs/COROUTINE_EXCEPTION_TIMEOUT.md` 同步。
+
+---
+
 ## [2026-09-07] 训练退出保护 + 缓存清理确认 + 多渠道打包 + 一键脚本
 
 ### 摄像头训练页「退出保护」（新交互）

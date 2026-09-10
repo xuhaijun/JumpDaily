@@ -390,8 +390,9 @@ erDiagram
 |------|------|------|
 | `PoseCounterTest` | `app/src/test/java/.../camera` | 摄像头计数算法（起跳/落地滞回、去抖、频率估算） |
 | `DateUtilsTest` | `app/src/test/java/.../util` | `dayStart`、`computeStreak` 连续打卡计算 |
+| `WidgetAggregatorTest` | `app/src/test/java/.../widget` | 「async 异常延迟暴露」fail-fast：单源抛错必须上抛（非吞掉）、全成功返回快照 |
 
-运行：`./gradlew testDebugUnitTest`。
+运行：`./gradlew testOfficialDebugUnitTest`（多渠道 flavor，official 为默认）。
 
 **待补**：UI 层（`composeTestRule`）尚未覆盖；`JumpDetector` 依赖 `SensorManager` 需 `Robolectric`/插桩；`BadgeCatalog` 谓词可加纯函数单测。
 

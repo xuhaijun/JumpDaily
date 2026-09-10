@@ -5,7 +5,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -157,7 +157,7 @@ dependencies {
     // ===== 本地数据库 Room =====
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
 
     // ===== 偏好设置（当前孩子 / 设置项） =====
     implementation("androidx.datastore:datastore-preferences:1.1.1")
@@ -182,4 +182,15 @@ dependencies {
 
     // ===== 性能：云基线配置（Baseline Profile）支撑，Play 商店可下发，提升冷启动与滚动流畅度 =====
     implementation("androidx.profileinstaller:profileinstaller:1.3.1")
+
+    // ===== 桌面小组件（Jetpack Glance，纯本地、无外部账号）=====
+    // glance 1.1.0 依赖 Compose UI 1.6.x，与本项目 compose-bom 2024.09.00（Compose 1.6.8）匹配；
+    // 用 compose = true 的同一套 Compose 编译器（kotlinCompilerExtensionVersion 1.5.14）。
+    implementation("androidx.glance:glance:1.1.0")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+
+    // ===== 单元测试：验证「async 异常延迟暴露」fail-fast（coroutineScope + 逐一 await）=====
+    // kotlinx-coroutines-test 带来与主线一致的 kotlinx-coroutines-core，runTest 驱动结构化并发测试。
+    // 版本对齐 kotlinx-coroutines-bom:1.7.3（镜像源未收录 1.7.6，且与主协程库保持一致避免重复类）
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }

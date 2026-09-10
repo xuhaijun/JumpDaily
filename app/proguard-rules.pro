@@ -61,3 +61,10 @@
 # ===== Compose =====
 -dontwarn androidx.compose.**
 -keep class androidx.compose.** { *; }
+
+# ===== 桌面小组件（Jetpack Glance）=====
+# Glance 的 actionRunCallback<RefreshWidgetAction>() 在运行时按类名反射实例化 ActionCallback，
+# 若被 R8 混淆改名，Class.forName 解析失败 → 小组件「刷新」点击无响应。
+# 整个 widget 包（Widget / Receiver / ActionCallback）保留原名，禁用混淆。
+-keep class com.jumpdaily.jump.widget.** { *; }
+-dontwarn androidx.glance.**
