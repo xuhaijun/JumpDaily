@@ -491,6 +491,10 @@ app/src/main/java/com/jumpdaily/jump/
   - [Kotlin 在 Android 的常规用法](./KOTLIN_ANDROID_USAGE.md)：val/var、data/sealed/enum、扩展函数、作用域函数、集合/序列、高阶函数、空安全、属性委托、协程基础，配本项目示例。
   - [Android 高级开发核心技术](./ANDROID_ADVANCED_CORE.md)：Framework 源码（Binder/Handler/AMS/WMS/ART）、性能（卡顿/内存/ANR/启动/包体）、架构/模块化、Jetpack 全家桶、并发、构建工程化、安全合规、跨平台，附本项目掌握度自检表。
 
+**面试与复盘（2026-09-10）：**
+
+- [Android 高级工程师面试复习提纲](./INTERVIEW_REVIEW.md)：按 Framework/性能/协程/Kotlin/架构/Jetpack/工程化/发布合规/跨平台 维度组织，每节「考点 → 本项目实战 → 文档索引」+ 30 道高频自测题 + 源码走查清单；直接复用本文件全部专题。
+
 **上手向导：**
 
 - [源码导览与阅读顺序](./SOURCE_TOUR.md)：项目结构全景、四步阅读顺序、IDE 打开操作、构建/模拟器/真机 adb 命令、一次跳绳生命周期走查、改功能速查表。

@@ -8,6 +8,7 @@ import android.graphics.Matrix
 import android.net.Uri
 import android.provider.Settings
 import android.util.Log
+import java.util.concurrent.TimeUnit
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -223,7 +224,10 @@ fun CameraTrainingScreen(nav: NavHostController, session: SessionViewModel, cont
         val future = ProcessCameraProvider.getInstance(ctx)
         future.addListener({
             try {
-                val cameraProvider = future.get()
+                // 加超时保护：相机初始化在极端情况下（相机被占用/系统繁忙）可能长时间挂起，
+                // 无超时会在主线程 executor 上无限阻塞 → ANR。Guava ListenableFuture 原生支持 get(timeout, unit)。
+                // 详见 docs/COROUTINE_EXCEPTION_TIMEOUT.md「withTimeoutOrNull 补强」一节。
+                val cameraProvider = future.get(CAMERA_PROVIDER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder()
                     // setTargetResolution 已弃用，改用 ResolutionSelector：目标 640x480，允许回退到更接近的可用分辨率
@@ -843,3 +847,6 @@ private const val FRAME_INTERVAL_MS = 66L
 
 /** 平均亮度（0~255）低于此值判定为「画面太暗」。 */
 private const val BRIGHTNESS_DIM = 42
+
+// 相机 Provider 初始化超时：超过则放弃绑定并走 catch 日志（避免主线程无限挂起 → ANR）
+private const val CAMERA_PROVIDER_TIMEOUT_MS = 10_000L

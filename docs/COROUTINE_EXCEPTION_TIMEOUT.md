@@ -248,4 +248,4 @@ fun `reminder failure does not crash`() = runTest {
 // 取消测试：advanceTime 后 assert 计时器协程 isCancelled
 ```
 
-**小结**：本项目协程基础扎实（作用域用对、`collect` 自动取消、`try/catch` 关键路径已包），**缺口在超时兜底**（相机绑定/模型下载两处建议加 `withTimeoutOrNull`）和"async 异常延迟"认知。按本文第 5.1 节补两处即可显著提健壮性。
+**小结**：本项目协程基础扎实（作用域用对、`collect` 自动取消、`try/catch` 关键路径已包），**超时兜底已部分落地**：相机绑定已于 2026-09-10 用 Guava `Future.get(timeout, unit)` 加 10s 超时（见 `CameraTrainingScreen.kt:226`，因绑定在 `addListener` 非协程回调里，用 Future 原生超时等价于 `withTimeoutOrNull` 意图，编译已验证）；**模型下载仍待补**（按第 5.1 节给 `PoseModelProvider` 的联网三级加载加 `withTimeoutOrNull(15_000)` 回退预置）。另需补"async 异常延迟"认知。
