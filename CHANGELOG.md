@@ -4,6 +4,11 @@
 
 ---
 
+## [2026-09-15] 新增 Android 网络编程必备文档（面试精要 + 实战）
+
+- 新增 `docs/ANDROID_NETWORKING.md`：补充 docs 此前缺失的网络编程专题，覆盖 Socket(TCP/UDP)/TCP 粘包、HTTP/HTTPS/TLS 握手、HTTP 版本演进、OkHttp 拦截器链/连接池/缓存/证书锁定、Retrofit 类型安全封装、RESTful 设计规范、WebSocket/SSE、协程+网络工程化、安全合规与抓包、弱网重试、30+ 面试高频考点；并标注本项目网络现状（仅 MediaPipe 模型下载联网）与云端引入建议栈。
+- 同步 `docs/ARCHITECTURE.md` 文档索引、本文件条目。
+
 ## [2026-09-04] 体验打磨五连发：挂起会话恢复 + 浮条重构 + 历史记录/缓存/间距修复（当日第 4~8 轮）
 
 ### 摄像头训练页

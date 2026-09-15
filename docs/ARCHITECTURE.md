@@ -487,6 +487,7 @@ app/src/main/java/com/jumpdaily/jump/
 
 - **协程/语言/导航进阶**：
   - [协程异常处理/超时取消实战](./COROUTINE_EXCEPTION_TIMEOUT.md)：协作式取消（`isActive`/`ensureActive`）、`viewModelScope` 自动取消、`coroutineScope` vs `supervisorScope`、`launch` vs `async` 异常延迟、`try/catch` 真实点位、`withTimeoutOrNull` 补强（相机绑定/模型下载）、反模式速查。
+  - [Android 网络编程必备](./ANDROID_NETWORKING.md)：Socket(TCP/UDP)/TCP 粘包、HTTP/HTTPS/TLS 握手、HTTP/1.1→2→3、OkHttp 拦截器链/连接池/缓存/证书锁定、Retrofit 类型安全封装、RESTful 设计、WebSocket/SSE、协程+网络、安全合规与抓包、弱网重试、30+ 面试高频考点；并标注本项目网络现状与云端引入建议栈。
   - [Compose 手势与自定义 Layout](./COMPOSE_GESTURE_LAYOUT.md)：手势三档 API、`FloatingJumpBar` 拖动吸边（detectDragGestures/tap slop/change.consume/lambda offset）、自定义 `Layout` 原理与何时用（⚠️ 当前未用）。
   - [Navigation 深层链接/类型安全路由落地](./NAVIGATION_DEEPLINK.md)：当前字符串路由现状、Manifest `intent-filter`+`navDeepLink` 蓝图、类型安全路由（2.8.0+ Kotlin Serialization，⚠️ 当前 2.7.7 待升级）。
   - [Kotlin 在 Android 的常规用法](./KOTLIN_ANDROID_USAGE.md)：val/var、data/sealed/enum、扩展函数、作用域函数、集合/序列、高阶函数、空安全、属性委托、协程基础，配本项目示例。
